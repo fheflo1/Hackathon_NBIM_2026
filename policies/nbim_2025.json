@@ -1,0 +1,19 @@
+{
+  "version": "nbim-2025-curated-subset-v1",
+  "source_url": "https://www.nbim.no/contentassets/01a7ee19b5d84a73a67a365e76a0fb01/global-voting-guildeines_2025.pdf",
+  "source_title": "NBIM Global voting guidelines 2025",
+  "checked_on": "2026-11-05",
+  "valid_from": "2025-02-17",
+  "valid_through": "2025-12-31",
+  "coverage_note": "Kuraterte norske parafraser av et lite utvalg. Datovinduet er en konservativ avgrensning for prototypen, ikke en påstand om offisiell ikrafttredelse. Andre år krever egne verifiserte policyversjoner.",
+  "rules": [
+    {"id": "NBIM25-CHAIR", "locator": "s. 6, 1.3, punkt 3", "text": "Støtt forslag om å skille rollene som styreleder og administrerende direktør.", "keywords": ["chair", "chairman", "ceo", "independent", "separate", "styreleder"], "demo_patterns": [{"pattern": "^(?:shareholder proposal[.: ]+)?(?:require |adopt |approve )?(?:an? )?independent (?:board )?chair(?:man|person)?[.]?$", "vote": "FOR"}]},
+    {"id": "NBIM25-DECLASSIFY", "locator": "s. 9, 3.1, punkt 2", "text": "Støtt forslag om å avvikle et klassedelt styre.", "keywords": ["declassify", "declassification", "annual", "board", "staggered"], "demo_patterns": [{"pattern": "^(?:shareholder proposal[.: ]+)?(?:approve |proposal to )?declassify (?:the )?board[.]?$", "vote": "FOR"}]},
+    {"id": "NBIM25-STAGGER", "locator": "s. 9, 3.1, punkt 1", "text": "Ikke støtt forslag om å innføre et klassedelt styre.", "keywords": ["classify", "stagger", "staggered", "board"], "demo_patterns": [{"pattern": "^(?:approve |proposal to )?(?:classify (?:the )?board|introduce (?:a )?staggered board)[.]?$", "vote": "MOT"}]},
+    {"id": "NBIM25-VOTING-CAPS", "locator": "s. 14, 4.1, punkt 3", "text": "Ikke støtt innføring av begrensninger på hvor mange stemmer en aksjeeier kan bruke.", "keywords": ["voting", "caps", "cap", "rights", "stemmerett"], "demo_patterns": [{"pattern": "^(?:approve |proposal to )?introduce voting caps[.]?$", "vote": "MOT"}]},
+    {"id": "NBIM25-UNEQUAL", "locator": "s. 14, 4.1, punkt 1–2", "text": "Ikke støtt nye aksjeklasser med ulik stemmerett. Støtt avvikling av slik ulikhet på rettferdige vilkår.", "keywords": ["unequal", "dual", "classes", "voting", "rights"], "demo_patterns": []},
+    {"id": "NBIM25-AUDITOR", "locator": "s. 16, 5.1", "text": "Vurder revisors uavhengighet, navn, skifte og honorarer. Manglende opplysninger kan hindre en begrunnet beslutning.", "keywords": ["auditor", "audit", "accountant", "ratify", "revisor"], "demo_patterns": []},
+    {"id": "NBIM25-PAY", "locator": "s. 12, 3.3", "text": "Vurder lederlønnens struktur, lokale praksis og sammenheng med langsiktig verdiskaping før stemmegivning.", "keywords": ["compensation", "pay", "remuneration", "salary", "lønn"], "demo_patterns": []},
+    {"id": "NBIM25-SUSTAINABILITY", "locator": "s. 17–18, 5.3", "text": "Vurder bærekraftsforslag etter vesentlighet, detaljstyring og selskapets eksisterende håndtering og rapportering.", "keywords": ["climate", "emissions", "sustainability", "environmental", "human", "rights", "report"], "demo_patterns": []}
+  ]
+}

@@ -1,0 +1,5 @@
+streamlit>=1.50,<2
+scikit-learn>=1.6,<2
+langgraph>=1.0,<2
+openai>=2,<3
+python-dotenv>=1,<2
