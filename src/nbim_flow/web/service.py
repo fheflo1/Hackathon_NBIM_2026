@@ -538,40 +538,35 @@ class AgendaService:
                     job_id, "policy_routed", {"record_id": records[i]["record_id"], "rule": rule}
                 )
         low = [i for i in low if i not in guarded and i not in covered]
+        # Three phases that never overlap, so the agent and the light checks never compete for the
+        # local model (concurrent requests with different schemas stalled Ollama). This also keeps
+        # weak hardware predictable: only light checks run in parallel, the agent runs alone.
         queue = deque(flagged + guarded + list(covered) + unscored)
+        calls = self._drain(job_id, queue, records, items, calls, counters)  # 1: flagged first
+        jobs = [("check", i) for i in low] + [("note", i) for i in flagged]
         with ThreadPoolExecutor(
             max_workers=self.settings.light_workers, thread_name_prefix="light"
-        ) as pool:
+        ) as pool:  # 2: light checks (+ notes for flagged items) in parallel
+            fn = {"check": self.light_checker, "note": self.note_writer}
             futures = {
-                pool.submit(self.light_checker, records[i], items[i]["triage"], catalogue): (
-                    "check",
-                    i,
-                )
-                for i in low
+                pool.submit(fn[kind], records[i], items[i]["triage"], catalogue): (kind, i)
+                for kind, i in jobs
             }
-            futures.update(
-                {
-                    pool.submit(self.note_writer, records[i], items[i]["triage"], catalogue): (
-                        "note",
-                        i,
-                    )
-                    for i in flagged
-                }
-            )
             pending = set(futures)
-            while queue or pending:
+            while pending:
                 if self.stop.is_set():
                     raise ValueError(
                         "Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette."
                     )
-                for future in [f for f in pending if f.done()]:
-                    pending.discard(future)
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
                     self._harvest(job_id, future, futures[future], records, items, queue, counters)
-                if queue:
-                    index = queue.popleft()
-                    calls = self._agent(job_id, index, records[index], items, calls, counters)
-                elif pending:
-                    wait(pending, return_when=FIRST_COMPLETED)
+        return self._drain(job_id, queue, records, items, calls, counters)  # 3: escalated items
+
+    def _drain(self, job_id, queue, records, items, calls, counters):
+        while queue:
+            index = queue.popleft()
+            calls = self._agent(job_id, index, records[index], items, calls, counters)
         return calls
 
     def _harvest(self, job_id, future, kind_index, records, items, queue, counters):
