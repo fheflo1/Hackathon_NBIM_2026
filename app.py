@@ -1,5 +1,5 @@
-"""Thin Streamlit entry point. Application code lives under src/nbim_flow."""
+"""ASGI entry point. Start the complete React app with python3 run.py."""
 
-from nbim_flow.ui.app import main
+from nbim_flow.web.api import create_app
 
-main()
+__all__ = ["create_app"]

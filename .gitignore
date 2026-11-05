@@ -238,3 +238,7 @@ src/*.egg-info/
 coverage.xml
 htmlcov/
 .ruff_cache/
+
+# React builds
+frontend/node_modules/
+frontend/dist/

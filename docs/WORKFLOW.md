@@ -1,57 +1,50 @@
 # Hele arbeidsflyten
 
-Diagrammet viser både trening, ekte modellkjøring, gjenbruk og manuell oppfølging.
-LLM-agentene kan kjøre lokalt via Ollama; OpenAI er et eksplisitt alternativ.
+Sakslisten starter behandlingen automatisk. Ingen stemmer sendes til en generalforsamling.
 
 ```mermaid
 flowchart TD
-    Setup[Oppsett og doctor] --> Mode{Valg av kjøring}
-    Mode -->|Demo| Input
-    Mode -->|LLM| Probe[Syntetisk API-test]
-    Probe --> Input[CSV eller saksliste]
-    Input --> Prep[Valider skjema, dato, identitet og tekst]
-    Prep -->|Ugyldig eller konflikt| Quarantine[Karantene med årsak]
-    Prep --> Facts[Tillatte fakta og evidence_hash]
-    Prep --> Labels[Separat historisk fasit]
-    Labels --> Train[Tidsdelt trening og evaluering]
-    Facts --> Train
-    Train --> Registry[Versjonert modellregister]
-    Registry --> Priority[Valgfri prioritering av alle saker]
-    Facts --> Priority
-    Priority --> Cache{Samme fakta, policy og beslutningsversjon?}
+    Upload[Last opp saksliste i React] --> FileCache{Samme fil og behandlingsversjon?}
+    FileCache -->|Ja| Existing[Vis eksisterende kjøring]
+    FileCache -->|Nei| Queue[FastAPI lagrer fil og oppretter jobb]
+    Queue --> Format{Filformat}
+    Format -->|CSV| CSV[Normaliser kolonner, tekst og dato]
+    Format -->|PDF eller TXT| Extract[Lokal modell trekker ut agendapunkter]
+    Extract --> Anchors[Kontroller møtedato, selskap og eksakte sitater mot dokumentet]
+    CSV --> Prep
+    Anchors --> Prep[Valider identitet, dato og alle agendapunkter]
+    Prep -->|Feil| Invalid[Vis feil uten å stemme på deler av filen]
+    Prep --> Facts[Tillatte saksfakta uten historisk fasit]
+    Facts --> Cache{Samme fakta, policy, prompts og modellinnhold?}
     Cache -->|Ja| Reuse[Gjenbruk lagret resultat]
-    Cache -->|Nei| Claim[Atomisk saksreservasjon]
+    Cache -->|Nei| Claim[Reserver saken atomisk]
     Claim --> Gates{Policydekning og dokumentkontroll}
-    Gates -->|Mangler grunnlag eller mulig angrep| Manual
-    Gates -->|OK| Budget{API-budsjett igjen?}
-    Budget -->|Nei| Deferred[Utsett resten av batchen]
-    Budget -->|Ja| Author[Agent 1 foreslår For, Mot eller Avstå]
-    Author --> Sources[Kontroller format, policy-ID og eksakte datasitater]
-    Sources -->|Gyldig| Reviewer[Agent 2 kontrollerer sammenheng og faktagrunnlag]
+    Gates -->|Manglende dekning eller mistenkelig innhold| Manual
+    Gates -->|OK| Budget{Modellbudsjett igjen?}
+    Budget -->|Nei| Stop[Stopp kjøringen og bevar ferdige saker]
+    Budget -->|Ja| Author[LangGraph: agent 1 anbefaler stemme med konfidens og sitater]
+    Author --> Sources[Kontroller format, konfidens, policy-ID og ordrette sitater]
+    Sources -->|Gyldig| Reviewer[Agent 2 etterprøver valget og alle påstander]
     Sources -->|Feil| Retry
-    Reviewer -->|Godkjent| Result[Kontrollert anbefaling]
-    Reviewer -->|Avvist| Retry{Kan rettes og færre enn fem forsøk?}
-    Retry -->|Ja| Budget
-    Retry -->|Nei| Manual[Avstå som reserveutfall og manuell kø]
-    Author -->|API-feil| Circuit[Logg feil og vurder batchstopp]
-    Reviewer -->|API-feil| Circuit
-    Circuit --> Deferred
-    Result --> Audit[(SQLite med versjoner, forsøk og hendelser)]
+    Reviewer -->|Godkjent| Result[Kontrollert For, Mot eller Avstå]
+    Reviewer -->|Avvist| Retry{Kan rettes uten nye fakta og innen fem forsøk?}
+    Retry -->|Ja, med tilbakemelding| Budget
+    Retry -->|Nei| Manual[Manuell oppfølging med Avstå som teknisk reservevalg]
+    Author -->|Modellfeil| Stop
+    Reviewer -->|Modellfeil| Stop
+    Result --> Audit[(SQLite: kilder, versjoner, forsøk og hendelser)]
     Manual --> Audit
-    Deferred --> Audit
     Reuse --> Audit
-    Audit --> Human[Menneskelig vurdering med navn og begrunnelse]
-    Human --> Audit
-    Audit --> Dashboard[Dashboard, logger og driftsmålinger]
-    Registry --> Dashboard
-    Quarantine --> Dashboard
-    Audit --> Evaluation[Evaluering mot separat fasit med dekning]
-    Labels --> Evaluation
+    Stop --> Audit
+    Audit --> UI[React: fremdrift, stemmetall, detaljer og CSV-eksport]
+    Existing --> UI
+    subgraph Historisk analyse - separat fra agentenes bevis
+        Raw[NBIM og N-PX i separate kilder] --> Clean[Preprocessing og kvalitetskontroll]
+        Clean --> Analysis[Datagrunnlag og faktisk stemmefordeling i React]
+        Clean --> Labels[Separat historisk fasit]
+        Labels --> Train[Tidsdelt logistisk baseline via CLI]
+        Train --> Registry[Versjonert modellregister og evaluering]
+    end
 ```
 
-Mermaid-kilden kan også lastes ned fra Workflow-siden eller skrives ut med
-`python3 run.py --cli workflow`.
-
-En vellykket tilkoblingstest betyr ikke at stemmen er riktig. Kontrollagenten kan
-avvise en teknisk gyldig anbefaling. Oppbrukt API-budsjett utsetter behandling;
-manglende fakta gir en synlig manuell kø. Ingen stemme sendes eksternt.
+Fem totale forsøk betyr høyst fire gjentakelser. Manglende fakta sendes til manuell oppfølging uten meningsløse nye forsøk. En teknisk Avstå teller ikke som en kontrollert Avstå-stemme. Historisk prioritering og klustring er ikke koblet inn som automatisk fasit i appen.

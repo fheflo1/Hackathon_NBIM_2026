@@ -66,7 +66,7 @@ class WorkflowTests(unittest.TestCase):
         return process_records(records, db_path=self.db, policy_path=POLICY, **kwargs)
 
     def test_demo_end_to_end_and_idempotency(self):
-        records = prepare_csv(ROOT / "data/demo_agenda.csv", "upload")["records"]
+        records = prepare_csv(ROOT / "tests/fixtures/agenda.csv", "upload")["records"]
         summary = self.run_cases(records)
         self.assertEqual(summary["processed"], 4)
         results = load_results(self.db)

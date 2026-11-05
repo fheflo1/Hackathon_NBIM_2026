@@ -1,89 +1,102 @@
 # Arkitektur og modulgrenser
 
 ```text
-app.py                         Tynn inngang til Streamlit
-run.py                         Opprett miljø, installer og start
-pyproject.toml                 src-pakke, CLI og utviklerverktøy
+run.py                         Ett oppsett og én lokal produksjonsserver
+app.py                         ASGI-inngang for alternativ uvicorn-start
+frontend/
+  src/App.tsx                  Opplasting, fremdrift og navigasjon
+  src/components/Results.tsx   Stemmetall, tabell og detaljvisning med kilder
+  src/components/DataView.tsx  Datakilder og preprocessing-prinsipper
+  src/components/AgentView.tsx Lesbar LangGraph-flyt
+  src/lib/                     API-kontrakt, typer og presentasjonsregler
+  package-lock.json            Låste frontendavhengigheter
 src/nbim_flow/
-  cli.py                       Kommandolinje og exit-koder
-  config.py                    Validert miljøkonfigurasjon og prosjektstier
-  data.py                      CSV-kvalitet, identitet, fakta og separate labels
-  model.py                     Historisk tekstmodell, tidsdeling og prioritering
-  registry.py                  Uforanderlige modellkjøringer og aktiv peker
-  agents.py                    Prompts, outputkontrakter og OpenAI-adapter
-  local_model.py               Ollama-adapter med JSON-schema og modellidentitet
-  policy.py                    Datert policy og transparent henting
-  graph.py                     LangGraph: anbefaling, kontroll og revisjon
-  workflow.py                  Batchservice, budsjett, cache og lagring
-  store.py                     SQLite, migrasjon, låser og menneskelig vurdering
-  operations.py                Sikre feilkategorier og strukturerte logger
-  monitoring.py                Driftsmålinger og beskrivende dataendringer
-  diagnostics.py               doctor, probe og oppretting av .env
-  evaluation.py                Sammenligning med separat historisk fasit
+  web/api.py                   FastAPI, opplasting, eksport og React-filer
+  web/service.py               Varig jobbstatus og én sekvensiell arbeidskø
+  web/ingestion.py             CSV/PDF/TXT og kildebundet dokumentuttrekk
+  web/analytics.py             Faktiske aggregater fra originalfilene
+  config.py                    Validert miljøkonfigurasjon
+  data.py                      Datakvalitet, identitet, fakta og separate labels
+  policy.py                    Datert, eksplisitt policyutvalg
+  agents.py                    Prompts, svarskjema og OpenAI-adapter
+  local_model.py               Lokal Ollama og versjonsidentitet
+  graph.py                     LangGraph: vurdering, kontroll og revisjon
+  workflow.py                  Saksreservasjon, budsjett, gjenbruk og audit
+  store.py                     SQLite, migrasjon, låser og historikk
+  model.py / registry.py       Separat historisk baseline og modellregister
+  diagnostics.py               Oppsettskontroll og eksplisitt modelltest
+  monitoring.py / evaluation.py Driftsmålinger og historisk evaluering
+  cli.py                       Analyse- og driftskommandoer
   diagrams.py                  Mermaid-kilden
-  ui/                          Separate visninger; ingen egen forretningslogikk
-tests/                         Offline funksjons- og regresjonstester
-policies/                      Daterte, gjennomgåtte policyfiler
-data/                          Rådata og syntetisk agenda
-artifacts/                     Ignorerte lokale resultater, modeller og database
-.github/workflows/ci.yml        Kodekontroll og tester ved push/PR
+policies/                      Daterte, kuraterte retningslinjer
+data/                          Bare de to originale datafilene
+tests/fixtures/                Testdata, aldri lastet inn i appen
+artifacts/                     Lokale opplastinger, modeller og revisjonsdatabase
+.github/workflows/ci.yml        Python- og React-kontroller
 ```
 
-## Viktige grenser
+## Enkel brukerflate, separate ansvar
 
-UI og CLI bruker samme preprocessing og batchservice. Oppstart forutsetter ikke
-at terminalens gjeldende mappe er `src`; pakken installeres eksplisitt. Prosjektets
-ressurser finnes fra repoet eller `NBIM_ROOT`. Ingen absolutte personlige stier er
-hardkodet i applikasjonen.
+React presenterer tilstand fra API-et. Den lager ingen stemmeanbefalinger eller
+simulert fremdrift. Modelloppsett ligger i `.env`, ikke i appens brukerflyt.
+FastAPI serverer ferdigbygget React og API fra samme lokale adresse. Skrifter ligger
+i bygget; eksterne fonter eller publiseringstjenester brukes ikke.
 
-Agentinput er en tillatt liste med fakta før avstemningen. Historiske labels og
-begrunnelser er separate og brukes bare til trening/evaluering. Modellscore,
-fasit og klustertilordning er ikke bevis på policyetterlevelse.
+Én prosess og én bakgrunnstråd behandler opplastinger sekvensielt. Hver fil lagres
+før kjøringen starter. `web_jobs` lagrer status og resultatsammendrag; `web_job_events`
+lagrer operative tilstandsendringer. Per sak bruker vi eksisterende LangGraph og
+revisjonslager, uten en parallell beslutningsimplementasjon i React eller API.
 
-LLM-adapterne har samme grensesnitt: propose, review, close og normalisert
-forbruksmetadata. Ollama bruker lokal HTTP med JSON-schema og uten proxy fra
-miljøet. OpenAI bruker Responses og `store=False`. Ingen adapter faller over til
-annen leverandør ved feil. Nettverksoppsett og tilgang testes eksplisitt.
+API-et returnerer straks etter registrering. Nettleseren henter faktisk status hvert
+andre sekund. Behandlingen fortsetter når nettleseren lukkes. Ved serverkrasj merkes
+uferdige jobber som avbrutt; ny opplasting gjenbruker ferdige saker. Ingen jobb regnes
+som fullført bare fordi prosessen startet på nytt.
+
+## Kildekontroll før og etter modellkall
+
+CSV normaliseres deterministisk. PDF/TXT bruker ett ekstra strukturert uttrekkskall.
+Selskap, dato og hvert forslag må kunne knyttes til originalteksten; forslagsteksten
+blir et ordrett, normalisert sitat, med sidenummer for PDF. Datoer gjettes ikke.
+Alle punkter valideres før første stemmevurdering, så karantene ikke blir til skjult
+utelatelse av agendapunkter. Uttrekket er likevel ikke en garanti for fullstendighet.
+
+Agentinput består av en tillatt liste av saksfakta. Historiske labels, begrunnelser,
+modellscores og klustre er ikke bevis på policyetterlevelse. Kildene NBIM og N-PX
+forblir adskilt. Skjev stemmefordeling og ukjente verdier vises som faktisk målt.
+
+LangGraph kjører vurderingsagent, fast kildekontroll og separat kontrollkall. Maks fem
+totale forsøk betyr maksimalt fire gjentakelser. Manglende fakta eller policydekning
+sendes til oppfølging. Feil som kan rettes får konkret tilbakemelding. Modellfeil
+stopper webkjøringen; ferdige saker bevares.
 
 ## Identitet og gjenbruk
 
-- `record_id`: kilde + møte + punkt.
-- `evidence_hash`: normaliserte saksopplysninger, uten historisk fasit.
-- `run_key`: fakta, policyhash, beslutningskode/prompts, modellkonfigurasjon og modus.
-- `batch_id`: én operativ kjøring, også når alle resultater gjenbrukes.
+- `record_id`: kilde, møte og punkt.
+- `evidence_hash`: normaliserte saksfakta, uten fasit.
+- `run_key`: fakta, policyhash, beslutningskode/prompts og modellkonfigurasjon.
+- `batch_id`: én operativ saksbehandling, også ved gjenbruk.
+- Webfingeravtrykk: filinnhold, uttrekksversjon, policy og modellkonfigurasjon.
 
-For lokal Ollama hentes modellens digest før batchen. Endret modellinnhold under
-samme tag gir dermed en ny beslutningsversjon. UI-endringer, logger, kømodell og
-endret forsøksbudsjett alene utløser ikke nye kall for ferdige saker.
-For leverandøraliaser uten slik digest brukes eksplisitt modellversjon eller et
-bevisst skifte av `NBIM_CACHE_NAMESPACE`.
+Lokal modell-digest fanger opp endret modellinnhold under samme navn. React-endringer
+utløser ingen ny vurdering. Ved endrede filrader gjenbrukes uendrede saker. Opprinnelig
+kilde og vurderingshistorikk beholdes. For API-aliaser uten digest må prosjektansvarlig
+bruke eksplisitte modellversjoner eller bytte `NBIM_CACHE_NAMESPACE` bevisst.
 
-## Tilstander og kontroll
+SQLite bruker atomisk saksreservasjon og ti minutters lease med eierskapstoken.
+En gammel prosess kan ikke overskrive en sak som er overtatt av en annen. Sluttstatus
+og slutthendelse lagres i samme transaksjon. Eksisterende audit-tabeller bevares.
 
-En sak er `processing`, `verified`, `demo_checked`, `human_review`, `error` eller
-`deferred`. Demo og ekte modellmodus blandes ikke i driftsoversikten.
-En teknisk AVSTÅ har en eksplisitt reserveårsak og er ikke en ferdig avstemning.
+## Tydelige resultater og avgrensninger
 
-Fem totale vurderingsforsøk betyr fire retries. API-budsjettet reserveres før
-hvert modellkall. Oppbrukt budsjett utsetter saken; autentisering, kvote og feil
-modelloppsett stopper batchen. Tre påfølgende feil stanser videre behandling.
-Kall som allerede har feilet kan fortsatt ha forbrukt modellressurser; manglende
-tokenbruk etter nettverksavbrudd rapporteres ikke som et bevist nullforbruk.
+Bare `verified` teller i For/Mot/Avstå-kortene. Manuelle og tekniske reserveutfall vises
+separat. Konfidens skjules ved reserveutfall; 0 % skal ikke fremstå som en sannsynlighet
+for korrekt Avstå. Kildehenvisninger er parafraser med offisiell lokator, ikke sitater
+fra et komplett policybibliotek. Ingen stemmer sendes videre fra appen.
 
-SQLite har atomisk reservasjon og en ti minutters lease. Et eierskapstoken hindrer
-en gammel prosess i å overskrive saken etter at en ny prosess har overtatt. Brukte
-forsøk beholdes etter krasj. Sluttstatus og slutthendelse lagres i samme transaksjon.
-Migrasjon fra den første databasen er additiv og bevarer tidligere historikk.
-
-Menneskelig vurdering er en separat, logget oppføring. Agentens opprinnelige
-stemme og begrunnelse endres ikke. Dashboardet viser en effektiv anbefaling og
-om oppfølging gjenstår. Navnet er selvoppgitt i denne lokale teamversjonen; det er
-ikke en autentisert identitet eller en elektronisk signatur.
-
-## Avgrensning
-
-Dette er en lokal teamapplikasjon. Den har ikke flerkundestøtte, sentral innlogging,
-uforanderlig revisjonsarkiv eller en distribuert jobbkø. Default binding er bare til
-127.0.0.1. Før eventuell bredere drift må tilgangsstyring, lagring, datakilder,
-policydekning og LLM-kvalitet vurderes for det faktiske bruksområdet.
-DeBERTa-vektene og gruppas eksakte inputkode er ikke en del av denne kjøringen.
+Dette er en lokal teamapplikasjon uten sentral innlogging, distribuert kø eller
+flerkundestøtte. Serveren binder til 127.0.0.1, avviser ukjente verter og eksterne
+Origin-verdier ved endringer. Opplastingsstørrelse og agentforsøk er avgrenset;
+CSV-eksport nøytraliserer regnearkformler. Modelltilgang faller ikke over til skyen.
+En fungerende kontrollagent garanterer ikke generell beslutningskvalitet, særlig
+når begge roller bruker samme modell. Manuell saksbehandling skjer utenfor denne
+forenklede React-flaten; den gamle menneskelige revisjonshistorikken er bevart i lageret.

@@ -27,7 +27,9 @@ def doctor(settings=None):
 
     add("Python", sys.version_info >= (3, 11), sys.version.split()[0])
     for module, distribution in (
-        ("streamlit", "streamlit"),
+        ("fastapi", "fastapi"),
+        ("uvicorn", "uvicorn"),
+        ("pypdf", "pypdf"),
         ("sklearn", "scikit-learn"),
         ("langgraph", "langgraph"),
         ("openai", "openai"),
@@ -39,9 +41,16 @@ def doctor(settings=None):
             else "Mangler; kjør python3 run.py --setup"
         )
         add(distribution, present, version)
-    for filename in ("demo_agenda.csv", "real_votes.csv", "npx_votes.csv"):
+    built = settings.root / "frontend/dist/index.html"
+    add(
+        "React-bygg",
+        built.is_file(),
+        str(built) if built.is_file() else "Bygg med python3 run.py --setup",
+        required=False,
+    )
+    for filename in ("real_votes.csv", "npx_votes.csv"):
         path = settings.root / "data" / filename
-        add(filename, path.is_file(), str(path), required=filename == "demo_agenda.csv")
+        add(filename, path.is_file(), str(path), required=False)
     try:
         policy = load_policy(settings.policy_path)
         add(

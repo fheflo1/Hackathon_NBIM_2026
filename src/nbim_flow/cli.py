@@ -44,9 +44,7 @@ def parser_for_cli():
             command.add_argument("--target-recall", type=float, default=0.8)
         if name in ("process", "evaluate"):
             command.add_argument("--db", type=Path)
-            command.add_argument(
-                "--mode", choices=("demo", "llm"), default="demo" if name == "process" else "llm"
-            )
+            command.add_argument("--mode", choices=("demo", "llm"), default="llm")
         if name == "process":
             command.add_argument("--limit", type=int, default=5)
             command.add_argument("--max-attempts", type=int)
@@ -56,9 +54,6 @@ def parser_for_cli():
             command.add_argument("--reviewer-model")
             command.add_argument("--priority-model", type=Path)
             command.add_argument("--year", type=int)
-    demo = commands.add_parser("demo")
-    demo.add_argument("--skip-training", action="store_true")
-    commands.add_parser("attack-test")
     return parser
 
 
@@ -118,13 +113,6 @@ def main(argv=None):
                 with closing(sqlite3.connect(out)) as dst:
                     src.backup(dst)
             emit({"backup": str(out), "source": str(source)})
-        elif args.command in ("demo", "attack-test"):
-            from .demo import run_demo
-
-            run_demo(
-                skip_training=args.command == "attack-test" or args.skip_training,
-                attack_only=args.command == "attack-test",
-            )
         else:
             if args.source == "upload" and args.input is None:
                 raise ValueError("--source upload krever --input sti/til/agenda.csv")
