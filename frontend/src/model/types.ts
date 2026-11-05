@@ -54,6 +54,8 @@ export type TriagedItem = Item & {
   light_check?: LightCheck;
   model_note?: ModelNote;
   escalated?: boolean;
+  safety_routed?: boolean;
+  policy_routed?: string;
   result: (Result & { check?: 'light' | 'full' }) | null;
 };
 

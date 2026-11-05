@@ -10,11 +10,15 @@ export function RiskCell({ item }: { item: Item }) {
   if (!t) return <span className="muted">—</span>;
   const state = t.flagged
     ? { cls: 'flagged', text: 'Flagget' }
-    : it.escalated
-      ? { cls: 'escalated', text: 'Eskalert' }
-      : it.result?.check === 'light'
-        ? { cls: 'light', text: 'Lett kontroll' }
-        : { cls: 'low', text: 'Lav risiko' };
+    : it.safety_routed
+      ? { cls: 'flagged', text: 'Sikkerhetsport' }
+      : it.policy_routed
+        ? { cls: 'escalated', text: 'Policyregel' }
+        : it.escalated
+          ? { cls: 'escalated', text: 'Eskalert' }
+          : it.result?.check === 'light'
+            ? { cls: 'light', text: 'Lett kontroll' }
+            : { cls: 'low', text: 'Lav risiko' };
   return (
     <div className="risk-cell" title={`Terskel ${pct(t.threshold)} · ${t.lane_label}`}>
       <span className="confidence-number">{pct(t.risk)}</span>
@@ -37,9 +41,13 @@ export function TriagePanel({ item }: { item: Item }) {
   if (!t) return null;
   const route = t.flagged
     ? 'Flagget: saken gikk først til full agentvurdering med kontrollagent.'
-    : it.escalated
-      ? 'Lav modellrisiko, men den lette agentkontrollen fant noe å se på. Saken ble eskalert til full vurdering.'
-      : 'Lav modellrisiko. En lett agentkontroll bekreftet at stemmen kan følge styrets anbefaling.';
+    : it.safety_routed
+      ? 'Teksten ligner et instruksjonsangrep. Saken gikk forbi den lette kontrollen til sikkerhetsporten, som sender den til manuell vurdering uten modellkall.'
+      : it.policy_routed
+        ? `Lav modellrisiko, men policyregelen ${it.policy_routed} dekker saken eksplisitt. Den gikk derfor til full agentvurdering.`
+        : it.escalated
+          ? 'Lav modellrisiko, men den lette agentkontrollen fant noe å se på. Saken ble eskalert til full vurdering.'
+          : 'Lav modellrisiko. En lett agentkontroll bekreftet at stemmen kan følge styrets anbefaling.';
   return (
     <section className="detail-block triage-block">
       <h3>
