@@ -44,10 +44,18 @@ class TriageModelTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_validation_matches_the_documented_2024_numbers(self):
+        # Documented on Windows: TP/FP/FN 50/29/48, average precision 0.560. Floating-point
+        # differences between platforms move one or two borderline items across the threshold
+        # (CI on Linux: 48/28/50 with Python 3.13, 47/29/51 with 3.11), so check a tolerance band;
+        # a real regression moves these numbers far more.
         v = self.report["validation"]
         self.assertEqual(v["year"], 2024)
-        self.assertEqual((v["all"]["tp"], v["all"]["fp"], v["all"]["fn"]), (50, 29, 48))
-        self.assertAlmostEqual(v["average_precision"], 0.5599, places=3)
+        self.assertEqual(v["all"]["tp"] + v["all"]["fn"], 98)  # against-votes in 2024
+        self.assertTrue(45 <= v["all"]["tp"] <= 53, v["all"])
+        self.assertTrue(25 <= v["all"]["fp"] <= 33, v["all"])
+        self.assertAlmostEqual(v["average_precision"], 0.56, delta=0.02)
+        prevalence = v["all"]["against"] / v["all"]["items"]  # random ranking scores this
+        self.assertGreater(v["average_precision"], 5 * prevalence)
 
     def test_future_labels_never_change_a_score(self):
         out = self.model.score(self.records)
