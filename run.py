@@ -94,6 +94,12 @@ def main():
     )
     if args.setup or launch:
         build_frontend()
+        # Triage model (artifacts/ is not in git): train once from data/real_votes.csv, ~10 s.
+        if not (ROOT / "artifacts/triage/triage_model.joblib").exists() and (
+            ROOT / "data/real_votes.csv"
+        ).exists():
+            print("Trener triagemodellen …", flush=True)
+            subprocess.run([str(python), "-m", "nbim_flow", "triage-train"], cwd=ROOT, check=True)
     if args.setup:
         print("Klart. Kjør python3 run.py for å åpne appen på http://127.0.0.1:8765", flush=True)
         return 0

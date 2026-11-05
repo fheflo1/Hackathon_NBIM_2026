@@ -6,12 +6,15 @@ import logging
 import math
 import sqlite3
 import threading
+import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
+from .. import triage as triage_lib
 from ..local_model import model_identity
 from ..operations import provider_error
 from ..policy import load_policy
@@ -21,6 +24,8 @@ from .ingestion import MAX_BYTES, read_agenda
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"completed", "needs_attention", "failed"}
+LIGHT_VERSION = "light-check-v5"  # bump when prompts change: re-uploads re-run
+NBIM_VOTING_URL = "https://www.nbim.no/en/responsible-investment/voting/our-voting-records/"
 
 
 def stamp(value):
@@ -30,8 +35,23 @@ def stamp(value):
 
 
 class AgendaService:
-    def __init__(self, settings, processor=process_records, reader=read_agenda, identity=None):
+    def __init__(
+        self,
+        settings,
+        processor=process_records,
+        reader=read_agenda,
+        identity=None,
+        triage=None,
+        light_checker=None,
+        note_writer=None,
+    ):
         self.settings, self.processor, self.reader = settings, processor, reader
+        # Triage model (LR on agenda structure + NBIM's earlier votes). None = load lazily from
+        # settings.triage_model_path; False = off. Without a model every item goes to the agent.
+        self._triage = triage
+        self._triage_sha = None
+        self.light_checker = light_checker or self._light_check
+        self.note_writer = note_writer or self._note
         self.identity = identity or (
             lambda: (
                 model_identity(
@@ -195,6 +215,7 @@ class AgendaService:
                 "attempts": self.settings.max_attempts,
                 "calls": self.settings.max_api_calls,
                 "effort": self.settings.reasoning_effort,
+                "triage": self.triage_stamp(),
             }
         )
         with self.lock, self.connection() as db:
@@ -273,67 +294,18 @@ class AgendaService:
                 api_calls=calls,
                 current_record=None,
             )
-            done, cached = 0, 0
-            for index, record in enumerate(records):
-                if self.stop.is_set():
-                    raise ValueError(
-                        "Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette."
-                    )
-                if calls >= self.settings.max_api_calls:
-                    raise ValueError(
-                        "Kjøringen nådde modellbudsjettet. Ferdige saker er lagret. Kontakt prosjektansvarlig."
-                    )
+            counters = {"done": 0, "cached": 0, "light_calls": 0, "escalated": 0}
+            scores = self._score(records, job_id)
+            if scores:
+                for item in items:
+                    item["triage"] = scores.get(item["record_id"])
                 self.update(
-                    job_id, current_record=record["record_id"], stage="recommend", attempt=1
+                    job_id, items=items, stage="triage", triage_summary=self._summary(items)
                 )
-                summary = self.processor(
-                    [record],
-                    db_path=self.settings.database_path,
-                    mode="llm",
-                    settings=self.settings,
-                    limit=1,
-                    max_api_calls=self.settings.max_api_calls - calls,
-                )
-                calls += summary["api_calls"]
-                with self.connection() as db:
-                    event_rows = db.execute(
-                        "SELECT run_key,payload_json FROM events WHERE record_id=? ORDER BY id DESC LIMIT 100",
-                        (record["record_id"],),
-                    ).fetchall()
-                    key = next(
-                        (
-                            e["run_key"]
-                            for e in event_rows
-                            if json.loads(e["payload_json"]).get("batch_id") == summary["batch_id"]
-                        ),
-                        None,
-                    )
-                    row = db.execute(
-                        "SELECT status,attempts,result_json FROM results WHERE run_key=?", (key,)
-                    ).fetchone()
-                result = (
-                    dict(
-                        json.loads(row["result_json"]),
-                        status=row["status"],
-                        attempts=row["attempts"],
-                    )
-                    if row
-                    else None
-                )
-                if result is None or result["status"] == "processing":
-                    raise ValueError(
-                        "Saken behandles av en annen prosess. Last opp igjen når den er ferdig."
-                    )
-                trace = load_events(self.settings.database_path, result["run_key"])
-                items[index]["result"] = public_result(result, trace)
-                items[index]["cached"] = bool(summary["skipped"])
-                done += 1
-                cached += bool(summary["skipped"])
-                self.update(job_id, items=items, done=done, cached=cached, api_calls=calls)
-                if summary.get("stopped_reason") or result["status"] in ("error", "deferred"):
-                    raise ValueError(
-                        result.get("reason") or "Modellen kunne ikke fullføre kjøringen."
-                    )
+                calls = self._run_triaged(job_id, records, items, calls, counters)
+            else:
+                for index, record in enumerate(records):
+                    calls = self._agent(job_id, index, record, items, calls, counters)
             manual = any(i["result"].get("needs_human_review") for i in items)
             self.update(
                 job_id,
@@ -345,6 +317,327 @@ class AgendaService:
             logger.error("Agenda job %s failed (%s)", job_id, type(exc).__name__)
             message = str(exc) if isinstance(exc, ValueError) else provider_error(exc)["message"]
             self.update(job_id, status="failed", stage="failed", error=message, current_record=None)
+
+    def _agent(self, job_id, index, record, items, calls, counters):
+        """The existing, audited LangGraph decision for one record (behaviour unchanged)."""
+        if self.stop.is_set():
+            raise ValueError("Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette.")
+        if calls >= self.settings.max_api_calls:
+            raise ValueError(
+                "Kjøringen nådde modellbudsjettet. Ferdige saker er lagret. Kontakt prosjektansvarlig."
+            )
+        self.update(job_id, current_record=record["record_id"], stage="recommend", attempt=1)
+        summary = self.processor(
+            [record],
+            db_path=self.settings.database_path,
+            mode="llm",
+            settings=self.settings,
+            limit=1,
+            max_api_calls=self.settings.max_api_calls - calls,
+        )
+        calls += summary["api_calls"]
+        with self.connection() as db:
+            event_rows = db.execute(
+                "SELECT run_key,payload_json FROM events WHERE record_id=? ORDER BY id DESC LIMIT 100",
+                (record["record_id"],),
+            ).fetchall()
+            key = next(
+                (
+                    e["run_key"]
+                    for e in event_rows
+                    if json.loads(e["payload_json"]).get("batch_id") == summary["batch_id"]
+                ),
+                None,
+            )
+            row = db.execute(
+                "SELECT status,attempts,result_json FROM results WHERE run_key=?", (key,)
+            ).fetchone()
+        result = (
+            dict(json.loads(row["result_json"]), status=row["status"], attempts=row["attempts"])
+            if row
+            else None
+        )
+        if result is None or result["status"] == "processing":
+            raise ValueError("Saken behandles av en annen prosess. Last opp igjen når den er ferdig.")
+        trace = load_events(self.settings.database_path, result["run_key"])
+        with self.lock:
+            public = public_result(result, trace)
+            if items[index].get("triage"):
+                public["trace"] = [triage_event(items[index])] + public["trace"]
+                public["check"] = "full"
+            items[index]["result"] = public
+            items[index]["cached"] = bool(summary["skipped"])
+            counters["done"] += 1
+            counters["cached"] += bool(summary["skipped"])
+            self.update(
+                job_id,
+                items=items,
+                done=counters["done"],
+                cached=counters["cached"],
+                api_calls=calls,
+                light_calls=counters["light_calls"],
+            )
+        if summary.get("stopped_reason") or result["status"] in ("error", "deferred"):
+            raise ValueError(result.get("reason") or "Modellen kunne ikke fullføre kjøringen.")
+        return calls
+
+    # ------------------------------------------------------------------ triage + light checks
+    def triage_model(self):
+        if self._triage is None:
+            path = self.settings.triage_model_path
+            csv = self.settings.root / "data/real_votes.csv"
+            self._triage = False
+            if path.exists() and csv.exists():
+                try:
+                    self._triage = triage_lib.TriageModel.load(path, csv)
+                except Exception as exc:  # noqa: BLE001 - a stale model turns triage off, not the app
+                    logger.warning("Triage model not loaded (%s)", type(exc).__name__)
+        return self._triage or None
+
+    def triage_stamp(self):
+        if self._triage_sha is None:
+            path = self.settings.triage_model_path
+            self._triage_sha = (
+                hashlib.sha256(path.read_bytes()).hexdigest() + "|" + LIGHT_VERSION
+                if self._triage is not False and path.exists()
+                else ""
+            )
+        return self._triage_sha
+
+    def triage_card(self):
+        model = self.triage_model()
+        if model is None:
+            return {
+                "available": False,
+                "detail": "Triagemodellen er ikke trent. Kjør python run.py --cli triage-train.",
+            }
+        return dict(model.card(), available=True, light_workers=self.settings.light_workers)
+
+    def _event(self, job_id, event, payload):
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO web_job_events(job_id,timestamp,event,payload_json) VALUES(?,?,?,?)",
+                (job_id, now(), event, json.dumps(payload, ensure_ascii=False)),
+            )
+
+    def _score(self, records, job_id):
+        model = self.triage_model()
+        if model is None or not records:
+            return {}
+        try:
+            scores = model.score(records)
+        except Exception as exc:  # noqa: BLE001 - without scores every item goes to the full agent
+            logger.warning("Triage failed (%s)", type(exc).__name__)
+            self._event(job_id, "triage_failed", {"error": type(exc).__name__})
+            return {}
+        self._event(
+            job_id,
+            "triage",
+            {
+                "model": model.b["version"],
+                "flagged": [k for k, v in scores.items() if v["flagged"]],
+                "thresholds": model.b["thresholds"],
+            },
+        )
+        return scores
+
+    def _summary(self, items):
+        model = self.triage_model()
+        flagged = [i for i in items if (i.get("triage") or {}).get("flagged")]
+        return {
+            "model": model.b["version"] if model else None,
+            "items": len(items),
+            "flagged": len(flagged),
+            "light_workers": self.settings.light_workers,
+            "thresholds": model.b["thresholds"] if model else None,
+        }
+
+    def _llm(self, instructions, payload, schema, fallback):
+        if self.settings.provider != "ollama":
+            return dict(fallback, failed=True, skipped="provider"), 0
+        started = time.perf_counter()
+        out, failed = triage_lib.safe_llm(
+            lambda: triage_lib.ollama_json(self.settings, instructions, payload, schema), fallback
+        )
+        return dict(out, failed=failed, model=self.settings.model), int(
+            (time.perf_counter() - started) * 1000
+        )
+
+    def _light_check(self, record, scores, catalogue):
+        out, ms = self._llm(
+            triage_lib.CHECK_INSTRUCTIONS,
+            triage_lib.llm_payload(record, scores, catalogue),
+            triage_lib.CHECK_SCHEMA,
+            {
+                "decision": "ESCALATE",
+                "guideline": "none",
+                "reason": "Light check returned no valid answer; sent to full review.",
+                "confidence": 0.0,
+            },
+        )
+        return dict(out, duration_ms=ms)
+
+    def _note(self, record, scores, catalogue):
+        out, ms = self._llm(
+            triage_lib.NOTE_INSTRUCTIONS,
+            triage_lib.llm_payload(record, scores, catalogue),
+            triage_lib.NOTE_SCHEMA,
+            {
+                "guideline": scores.get("suggested_guideline") or "none",
+                "justification": "",
+                "confidence": 0.0,
+            },
+        )
+        return dict(out, duration_ms=ms)
+
+    def _run_triaged(self, job_id, records, items, calls, counters):
+        """Flagged items go to the full agent, highest risk first. Every other item gets a light,
+        parallel agent check; a failed or doubtful check escalates the item to the full agent."""
+        catalogue = self.triage_model().b["catalogue"]
+        flagged = sorted(
+            (i for i, item in enumerate(items) if item["triage"] and item["triage"]["flagged"]),
+            key=lambda i: -items[i]["triage"]["risk"],
+        )
+        unscored = [i for i, item in enumerate(items) if not item["triage"]]
+        low = [i for i, item in enumerate(items) if item["triage"] and not item["triage"]["flagged"]]
+        queue = deque(flagged + unscored)
+        with ThreadPoolExecutor(
+            max_workers=self.settings.light_workers, thread_name_prefix="light"
+        ) as pool:
+            futures = {
+                pool.submit(self.light_checker, records[i], items[i]["triage"], catalogue): ("check", i)
+                for i in low
+            }
+            futures.update(
+                {
+                    pool.submit(self.note_writer, records[i], items[i]["triage"], catalogue): ("note", i)
+                    for i in flagged
+                }
+            )
+            pending = set(futures)
+            while queue or pending:
+                if self.stop.is_set():
+                    raise ValueError("Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette.")
+                for future in [f for f in pending if f.done()]:
+                    pending.discard(future)
+                    self._harvest(job_id, future, futures[future], records, items, queue, counters)
+                if queue:
+                    index = queue.popleft()
+                    calls = self._agent(job_id, index, records[index], items, calls, counters)
+                elif pending:
+                    wait(pending, return_when=FIRST_COMPLETED)
+        return calls
+
+    def _harvest(self, job_id, future, kind_index, records, items, queue, counters):
+        kind, index = kind_index
+        try:
+            out = future.result()
+        except Exception:  # noqa: BLE001 - defensive: an unexpected error escalates
+            out = {"decision": "ESCALATE", "guideline": "none", "reason": "", "confidence": 0.0, "failed": True}
+        record, item = records[index], items[index]
+        with self.lock:
+            if kind == "note":
+                item["model_note"] = out
+                self.update(job_id, items=items)
+                return
+            counters["light_calls"] += 0 if out.get("skipped") else 1
+            item["light_check"] = out
+            self._event(
+                job_id,
+                "light_check",
+                {
+                    "record_id": record["record_id"],
+                    "decision": out.get("decision"),
+                    "guideline": out.get("guideline"),
+                    "failed": bool(out.get("failed")),
+                    "duration_ms": out.get("duration_ms"),
+                },
+            )
+            # same bar as the full agent: an unsure "follow the board" is not a decision
+            unsure = float(out.get("confidence") or 0.0) < self.settings.min_confidence
+            if out.get("failed") or out.get("decision") != "FOLLOW_BOARD" or unsure:
+                out["escalation_reason"] = (
+                    "failed" if out.get("failed") else "doubt" if out.get("decision") != "FOLLOW_BOARD" else "low_confidence"
+                )
+                counters["escalated"] += 1
+                item["escalated"] = True
+                queue.append(index)
+                self.update(
+                    job_id,
+                    items=items,
+                    light_calls=counters["light_calls"],
+                    escalated=counters["escalated"],
+                )
+                return
+            item["result"] = light_result(record, item["triage"], out, self.triage_model().b["catalogue"])
+            counters["done"] += 1
+            self.update(
+                job_id,
+                items=items,
+                done=counters["done"],
+                light_calls=counters["light_calls"],
+                escalated=counters["escalated"],
+            )
+
+
+def triage_event(item):
+    t = item["triage"]
+    check = item.get("light_check")
+    detail = f"Risiko {t['risk']:.0%} · {t['lane_label']} · " + (
+        "flagget for full vurdering" if t["flagged"] else "lav risiko"
+    )
+    if check:
+        detail += f" · lett kontroll: {check.get('decision')} ({check.get('reason', '')})"
+    return {"event": "triage", "attempt": 1, "timestamp": now(), "detail": detail, "accepted": True}
+
+
+def light_result(record, scores, check, catalogue):
+    guideline = str(check.get("guideline") or "").strip()
+    citations = (
+        [
+            {
+                "policy_id": guideline,
+                "locator": "NBIMs standardbegrunnelse",
+                "source_url": NBIM_VOTING_URL,
+                "policy_excerpt": catalogue[guideline]["text"][:400],
+                "evidence_quote": str(record.get("proposal_text", ""))[:300],
+            }
+        ]
+        if guideline in catalogue
+        else []
+    )
+    stamped = now()
+    return {
+        "run_key": "light:"
+        + stamp({"evidence": record.get("evidence_hash"), "check": check, "v": LIGHT_VERSION})[:32],
+        "status": "verified",
+        "vote": scores["follow_board_vote"],
+        "confidence": float(check.get("confidence") or 0.0),
+        "reason": check.get("reason") or "Ingen indikasjon på brudd med retningslinjene.",
+        "review_reason": (
+            f"Lett agentkontroll. Triagemodellen ga lav risiko ({scores['risk']:.0%}, terskel "
+            f"{scores['threshold']:.0%}); agenten fant ingen grunn til full vurdering. "
+            "Stemmen følger styrets anbefaling."
+        ),
+        "citations": citations,
+        "attempts": 1,
+        "retries": 0,
+        "needs_human_review": False,
+        "fallback_type": None,
+        "duration_ms": int(check.get("duration_ms") or 0),
+        "updated_at": stamped,
+        "check": "light",
+        "trace": [
+            triage_event({"triage": scores, "light_check": check}),
+            {
+                "event": "light_check",
+                "attempt": 1,
+                "timestamp": stamped,
+                "detail": f"{check.get('decision')} · {guideline or 'ingen retningslinje'} · {check.get('reason', '')}",
+                "accepted": True,
+            },
+        ],
+    }
 
 
 def public_result(result, events):

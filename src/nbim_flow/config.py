@@ -49,6 +49,8 @@ class Settings:
     context_tokens: int = 16384
     policy_file: str = "policies/nbim_2025.json"
     database_file: str = "artifacts/audit.sqlite"
+    triage_file: str = "artifacts/triage/triage_model.joblib"
+    light_workers: int = 2
 
     @classmethod
     def from_env(cls, root=None, environ=None):
@@ -119,6 +121,9 @@ class Settings:
             context_tokens=_number(env, "NBIM_CONTEXT_TOKENS", 16384, 4096, 65536),
             policy_file=env.get("NBIM_POLICY_PATH", "policies/nbim_2025.json"),
             database_file=env.get("NBIM_DATABASE_PATH", "artifacts/audit.sqlite"),
+            triage_file=env.get("NBIM_TRIAGE_MODEL_PATH", "artifacts/triage/triage_model.joblib"),
+            # parallel light agent checks; Ollama queues them on smaller machines
+            light_workers=_number(env, "NBIM_LIGHT_WORKERS", 2, 1, 8),
         )
 
     def path(self, relative):
@@ -132,6 +137,10 @@ class Settings:
     @property
     def policy_path(self):
         return self.path(self.policy_file)
+
+    @property
+    def triage_model_path(self):
+        return self.path(self.triage_file)
 
     def validate_llm(self):
         if not self.model or (self.provider == "openai" and not self.api_key):

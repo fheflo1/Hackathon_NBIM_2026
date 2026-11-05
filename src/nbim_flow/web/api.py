@@ -71,6 +71,11 @@ def create_app(settings=None, service=None):
     def info():
         return bootstrap(settings)
 
+    @app.get("/api/model")
+    def triage_model():
+        # Triage model card: validated 2024 numbers, lane thresholds, threshold curve, catalogue.
+        return service.triage_card()
+
     @app.get("/api/jobs")
     def jobs():
         return {

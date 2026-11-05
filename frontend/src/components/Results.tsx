@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Item, Job } from '../lib/types';
 import { confidence, date, number, tally } from '../lib/format';
+import { RiskCell, TriagePanel } from './TriagePanel';
 
 export function VoteBadge({ item }: { item: Item }) {
   const r = item.result;
@@ -98,6 +99,7 @@ export function Results({ job }: { job: Job }) {
               <tr>
                 <th>Sak</th>
                 <th>Agendapunkt</th>
+                <th>Triage</th>
                 <th>Anbefaling</th>
                 <th>Konfidens</th>
                 <th>Retningslinjer</th>
@@ -118,6 +120,9 @@ export function Results({ job }: { job: Job }) {
                       {item.company || 'Selskapsnavn ikke oppgitt'}
                       {item.cached ? ' · Gjenbrukt resultat' : ''}
                     </span>
+                  </td>
+                  <td>
+                    <RiskCell item={item} />
                   </td>
                   <td>
                     <VoteBadge item={item} />
@@ -235,6 +240,7 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
               <small>agentens egen vurdering</small>
             </div>
           </div>
+          <TriagePanel item={item} />
           <section className="detail-block">
             <h3>Begrunnelse</h3>
             <p>{r?.reason || 'Denne saken venter på behandling.'}</p>
@@ -314,6 +320,8 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
                                 : 'Anbefalingen ble avvist',
                               finalized: 'Resultatet ble lagret',
                               cache_hit: 'Lagret resultat gjenbrukt',
+                              triage: 'Triagemodellen',
+                              light_check: 'Lett agentkontroll',
                             } as Record<string, string>
                           )[e.event]
                         }

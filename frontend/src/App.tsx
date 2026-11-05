@@ -8,6 +8,7 @@ import {
   CircleAlert,
   Database,
   FileText,
+  Gauge,
   GitBranch,
   Layers3,
   LoaderCircle,
@@ -22,10 +23,13 @@ import { date, finished, labels, number, stages } from './lib/format';
 import { Results } from './components/Results';
 import { DataView } from './components/DataView';
 import { AgentView } from './components/AgentView';
+import { ModelView } from './components/ModelView';
+import type { TriagedJob } from './model/types';
 
-type Page = 'cases' | 'data' | 'agents';
+type Page = 'cases' | 'data' | 'agents' | 'model';
 const pages = [
   { id: 'cases', title: 'Saksbehandling', icon: Layers3 },
+  { id: 'model', title: 'Modellen', icon: Gauge },
   { id: 'data', title: 'Datagrunnlag', icon: Database },
   { id: 'agents', title: 'Agentflyt', icon: GitBranch },
 ] as const;
@@ -432,7 +436,14 @@ export function App() {
                         {job.done} saker lagret · {job.cached} gjenbrukt
                       </span>
                       <span>
-                        {job.api_calls} modellkall · {job.model}
+                        {job.api_calls} modellkall
+                        {(job as TriagedJob).light_calls
+                          ? ` · ${(job as TriagedJob).light_calls} lette kontroller`
+                          : ''}
+                        {(job as TriagedJob).escalated
+                          ? ` · ${(job as TriagedJob).escalated} eskalert`
+                          : ''}{' '}
+                        · {job.model}
                       </span>
                     </div>
                   )}
@@ -532,6 +543,7 @@ export function App() {
                 Leser datagrunnlaget …
               </div>
             ))}
+          {page === 'model' && <ModelView />}
           {page === 'agents' &&
             (info ? (
               <AgentView info={info} job={job} />
