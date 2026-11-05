@@ -5,7 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nbim_flow.data import PREPROCESSING_VERSION, SAFE_FIELDS, normalize_vote, prepare_csv, safe_record, write_prepared
+from nbim_flow.data import (
+    PREPROCESSING_VERSION,
+    SAFE_FIELDS,
+    normalize_vote,
+    prepare_csv,
+    safe_record,
+    write_prepared,
+)
 
 
 class PreprocessingTests(unittest.TestCase):
@@ -14,11 +21,19 @@ class PreprocessingTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "input.csv"
         self.row = {
-            "meeting_id": "meeting-1", "item_no": "1", "proposal_number": "1.1",
-            "company_id": "0000123", "company": "Example ASA", "country": "Norway",
-            "meeting_date": "2026-04-01", "proposal_text": "Elect Director Example",
-            "mgmt_rec_raw": "For", "nbim_vote_raw": "Against", "nbim_vote": "MOT",
-            "rationale_text": "Target-revealing explanation", "injection_flag": "0",
+            "meeting_id": "meeting-1",
+            "item_no": "1",
+            "proposal_number": "1.1",
+            "company_id": "0000123",
+            "company": "Example ASA",
+            "country": "Norway",
+            "meeting_date": "2026-04-01",
+            "proposal_text": "Elect Director Example",
+            "mgmt_rec_raw": "For",
+            "nbim_vote_raw": "Against",
+            "nbim_vote": "MOT",
+            "rationale_text": "Target-revealing explanation",
+            "injection_flag": "0",
             "funds_disagree": "0",
         }
 
@@ -38,8 +53,16 @@ class PreprocessingTests(unittest.TestCase):
         self.assertEqual(normalize_vote("Against"), "MOT")
 
     def test_safe_payload_strips_labels_and_derived_values_are_recomputed(self):
-        safe = safe_record({**self.row, "source": "real", "record_id": "forged",
-                            "evidence_hash": "forged", "topic": "fake", "proposal_type": "answer"})
+        safe = safe_record(
+            {
+                **self.row,
+                "source": "real",
+                "record_id": "forged",
+                "evidence_hash": "forged",
+                "topic": "fake",
+                "proposal_type": "answer",
+            }
+        )
         self.assertEqual(set(safe), set(SAFE_FIELDS))
         self.assertNotIn("nbim_vote", safe)
         self.assertNotIn("rationale_text", safe)
@@ -81,10 +104,14 @@ class PreprocessingTests(unittest.TestCase):
         result = self.prepare(rows)
         self.assertFalse(result["records"])
         reasons = {reason for row in result["quarantine"] for reason in row["reasons"]}
-        self.assertEqual(reasons, {"missing_identity", "invalid_meeting_date", "missing_proposal_text"})
+        self.assertEqual(
+            reasons, {"missing_identity", "invalid_meeting_date", "missing_proposal_text"}
+        )
 
     def test_proposal_number_fallback_and_unknown_label_preserved_for_inference(self):
-        result = self.prepare([{**self.row, "item_no": "", "nbim_vote_raw": "Do Not Vote", "nbim_vote": ""}])
+        result = self.prepare(
+            [{**self.row, "item_no": "", "nbim_vote_raw": "Do Not Vote", "nbim_vote": ""}]
+        )
         self.assertEqual(result["records"][0]["item_no"], "1.1")
         self.assertIsNone(result["labels"][0]["vote_label"])
         self.assertFalse(result["labels"][0]["training_eligible"])
@@ -102,7 +129,9 @@ class PreprocessingTests(unittest.TestCase):
         self.assertEqual(json.loads((output / "labels.jsonl").read_text())["vote_label"], "AVSTÅ")
         self.assertNotIn("nbim_vote", (output / "records.jsonl").read_text())
         self.assertEqual(json.loads((output / "report.json").read_text())["accepted_records"], 1)
-        self.assertEqual(result["report"]["input_sha256"], hashlib.sha256(self.path.read_bytes()).hexdigest())
+        self.assertEqual(
+            result["report"]["input_sha256"], hashlib.sha256(self.path.read_bytes()).hexdigest()
+        )
         self.assertEqual(result["report"]["preprocessing_version"], PREPROCESSING_VERSION)
 
     def test_unknown_source_rejected(self):

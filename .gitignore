@@ -231,3 +231,10 @@ tmp/
 
 # Environment variables
 .env
+
+# Package and development outputs
+src/*.egg-info/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/

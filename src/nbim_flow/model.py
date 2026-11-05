@@ -10,10 +10,13 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import tempfile
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from .registry import register_run, resolve_model
 
 VOTES = ("FOR", "MOT", "AVSTÅ")
 MODEL_VERSION = "text-priority-v1"
@@ -111,8 +114,12 @@ def select_routing_threshold(
 
 
 def _metrics(actual: list[str], predicted: list[str], probabilities=None) -> dict[str, Any]:
-    from sklearn.metrics import accuracy_score, average_precision_score, confusion_matrix
-    from sklearn.metrics import precision_recall_fscore_support
+    from sklearn.metrics import (
+        accuracy_score,
+        average_precision_score,
+        confusion_matrix,
+        precision_recall_fscore_support,
+    )
 
     if not actual:
         return {"count": 0, "mot_precision": None, "mot_recall": None, "mot_f1": None}
@@ -130,12 +137,16 @@ def _metrics(actual: list[str], predicted: list[str], probabilities=None) -> dic
         "class_counts": dict(Counter(actual)),
         "confusion_matrix": {
             "labels": list(VOTES),
-            "rows_actual_columns_predicted": confusion_matrix(actual, predicted, labels=list(VOTES)).tolist(),
+            "rows_actual_columns_predicted": confusion_matrix(
+                actual, predicted, labels=list(VOTES)
+            ).tolist(),
         },
     }
     if probabilities is not None:
         result["mot_average_precision"] = (
-            float(average_precision_score(binary_actual, probabilities)) if any(binary_actual) else None
+            float(average_precision_score(binary_actual, probabilities))
+            if any(binary_actual)
+            else None
         )
     return result
 
@@ -147,7 +158,9 @@ def _dependencies():
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
     except ImportError as exc:
-        raise RuntimeError("Installer prosjektets avhengigheter: pip install -r requirements.txt") from exc
+        raise RuntimeError(
+            "Installer prosjektets avhengigheter: pip install -r requirements.txt"
+        ) from exc
     return joblib, sklearn, TfidfVectorizer, LogisticRegression
 
 
@@ -192,21 +205,27 @@ def train_model(
             excluded["empty_text"] += 1
         else:
             # Explicit projection: post-vote columns can never enter training.
-            eligible.append({
-                "record_id": identity,
-                "meeting_date": record["meeting_date"],
-                "proposal_text": _text(record),
-                "mgmt_rec": record.get("mgmt_rec"),
-                "vote_label": label["vote_label"],
-            })
+            eligible.append(
+                {
+                    "record_id": identity,
+                    "meeting_date": record["meeting_date"],
+                    "proposal_text": _text(record),
+                    "mgmt_rec": record.get("mgmt_rec"),
+                    "vote_label": label["vote_label"],
+                }
+            )
     split = chronological_split(eligible)
     training, validation, testing = split["train"], split["validation"], split["test"]
     train_labels = [r["vote_label"] for r in training]
     if len(set(train_labels)) < 2 or "MOT" not in train_labels:
         raise ValueError("Treningsperioden må inneholde minst to klasser, inkludert MOT.")
     vectorizer = TfidfVectorizer(
-        ngram_range=(1, 2), max_features=30000, min_df=1, sublinear_tf=True,
-        strip_accents="unicode", token_pattern=r"(?u)\b\w\w+\b",
+        ngram_range=(1, 2),
+        max_features=30000,
+        min_df=1,
+        sublinear_tf=True,
+        strip_accents="unicode",
+        token_pattern=r"(?u)\b\w\w+\b",
     )
     x_train = vectorizer.fit_transform([_text(r) for r in training])
     classifier = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=42)
@@ -214,7 +233,9 @@ def train_model(
     mot_index = list(classifier.classes_).index("MOT")
     x_validation = vectorizer.transform([_text(r) for r in validation])
     validation_p = classifier.predict_proba(x_validation)[:, mot_index].tolist()
-    routing = select_routing_threshold([r["vote_label"] for r in validation], validation_p, target_recall)
+    routing = select_routing_threshold(
+        [r["vote_label"] for r in validation], validation_p, target_recall
+    )
     x_test = vectorizer.transform([_text(r) for r in testing])
     predictions = classifier.predict(x_test).tolist()
     test_p = classifier.predict_proba(x_test)[:, mot_index].tolist()
@@ -222,14 +243,26 @@ def train_model(
     route_labels = ["MOT" if p >= routing["threshold"] else "FOR" for p in test_p]
     board_indices = [i for i, r in enumerate(testing) if r.get("mgmt_rec") in VOTES]
     source = next(iter(sources))
-    training_digest = hashlib.sha256(json.dumps(
-        [[r["record_id"], r["meeting_date"], _text(r), r["vote_label"]] for r in training],
-        ensure_ascii=False, separators=(",", ":"),
-    ).encode()).hexdigest()
-    model_id = hashlib.sha256(json.dumps({
-        "version": MODEL_VERSION, "sklearn": sklearn.__version__, "training_digest": training_digest,
-        "routing": routing, "clusters": clusters,
-    }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    training_digest = hashlib.sha256(
+        json.dumps(
+            [[r["record_id"], r["meeting_date"], _text(r), r["vote_label"]] for r in training],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    model_id = hashlib.sha256(
+        json.dumps(
+            {
+                "version": MODEL_VERSION,
+                "sklearn": sklearn.__version__,
+                "training_digest": training_digest,
+                "routing": routing,
+                "clusters": clusters,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
     clusterer, cluster_topics = None, {}
     if clusters:
         if clusters > len(training):
@@ -247,7 +280,8 @@ def train_model(
         "model_version": MODEL_VERSION,
         "model_id": model_id,
         "source": source,
-        "label_provenance": "NBIM labels as supplied; source authenticity not independently audited" if source == "real"
+        "label_provenance": "NBIM labels as supplied; source authenticity not independently audited"
+        if source == "real"
         else "N-PX manager identity unverified; these are not established NBIM labels",
         "features": ["proposal_text"],
         "excluded": dict(excluded),
@@ -263,12 +297,17 @@ def train_model(
             },
             "always_for_baseline": _metrics(actual, ["FOR"] * len(actual)),
             "board_baseline": {
-                **_metrics([actual[i] for i in board_indices], [testing[i]["mgmt_rec"] for i in board_indices]),
+                **_metrics(
+                    [actual[i] for i in board_indices],
+                    [testing[i]["mgmt_rec"] for i in board_indices],
+                ),
                 "coverage": len(board_indices) / len(testing),
                 "missing_board_recommendations": len(testing) - len(board_indices),
             },
             "model_on_board_available_subset": _metrics(
-                [actual[i] for i in board_indices], [predictions[i] for i in board_indices], [test_p[i] for i in board_indices]
+                [actual[i] for i in board_indices],
+                [predictions[i] for i in board_indices],
+                [test_p[i] for i in board_indices],
             ),
         },
         "cluster_topics": cluster_topics,
@@ -281,39 +320,89 @@ def train_model(
         ],
     }
     bundle = {
-        "model_version": MODEL_VERSION, "model_id": model_id, "source": source,
-        "sklearn_version": sklearn.__version__, "vectorizer": vectorizer,
-        "classifier": classifier, "mot_index": mot_index,
-        "threshold": routing["threshold"], "clusterer": clusterer,
+        "model_version": MODEL_VERSION,
+        "model_id": model_id,
+        "source": source,
+        "sklearn_version": sklearn.__version__,
+        "vectorizer": vectorizer,
+        "classifier": classifier,
+        "mot_index": mot_index,
+        "threshold": routing["threshold"],
+        "clusterer": clusterer,
         "trained_through": split["metadata"]["train"]["date_max"],
         "evaluated_through": split["metadata"]["test"]["date_max"],
     }
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    output = Path(tempfile.mkdtemp(prefix=".training-", dir=destination))
+    report["created_at"] = datetime.now(timezone.utc).isoformat()
+    report["training_data_sha256"] = training_digest
+    report["code_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    report["sklearn_version"] = sklearn.__version__
+    report["input_profile"] = {
+        "count": len(records),
+        "topics": dict(Counter(r.get("topic", "unknown") for r in records)),
+        "mean_text_length": sum(len(_text(r)) for r in records) / len(records),
+    }
     joblib.dump(bundle, output / "model.joblib")
-    (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     with (output / "test_predictions.csv").open("w", encoding="utf-8", newline="") as stream:
-        fields = ["record_id", "meeting_date", "actual_vote", "predicted_vote", "p_mot", "priority", "mgmt_rec"]
+        fields = [
+            "record_id",
+            "meeting_date",
+            "actual_vote",
+            "predicted_vote",
+            "p_mot",
+            "priority",
+            "mgmt_rec",
+        ]
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         for row, prediction, probability in zip(testing, predictions, test_p):
-            writer.writerow({
-                "record_id": row["record_id"], "meeting_date": row["meeting_date"],
-                "actual_vote": row["vote_label"], "predicted_vote": prediction,
-                "p_mot": probability,
-                "priority": "high" if probability >= routing["threshold"] else "normal",
-                "mgmt_rec": row.get("mgmt_rec") or "",
-            })
+            writer.writerow(
+                {
+                    "record_id": row["record_id"],
+                    "meeting_date": row["meeting_date"],
+                    "actual_vote": row["vote_label"],
+                    "predicted_vote": prediction,
+                    "p_mot": probability,
+                    "priority": "high" if probability >= routing["threshold"] else "normal",
+                    "mgmt_rec": row.get("mgmt_rec") or "",
+                }
+            )
+    register_run(
+        output,
+        destination,
+        {
+            k: report[k]
+            for k in (
+                "model_id",
+                "source",
+                "training_data_sha256",
+                "code_sha256",
+                "sklearn_version",
+                "split",
+                "routing_threshold",
+                "input_profile",
+            )
+        },
+    )
     return report
 
 
 def load_model(path: str | Path) -> dict[str, Any]:
     """Load only trusted local artifacts: joblib can execute code when loading."""
     joblib, *_ = _dependencies()
-    location = Path(path)
-    bundle = joblib.load(location / "model.joblib" if location.is_dir() else location)
+    location = resolve_model(path)
+    bundle = joblib.load(location)
     if not isinstance(bundle, dict) or bundle.get("model_version") != MODEL_VERSION:
         raise ValueError("Ukjent modellformat; tren modellen på nytt.")
+    if bundle.get("sklearn_version") != _dependencies()[1].__version__:
+        raise ValueError(
+            "Modellen er trent med en annen scikit-learn-versjon. Tren på nytt i dette miljøet."
+        )
     return bundle
 
 
@@ -332,7 +421,11 @@ def prioritize(records: list[dict[str, Any]], model_path: str | Path) -> list[di
     matrix = model["vectorizer"].transform([_text(r) for r in records])
     probabilities = model["classifier"].predict_proba(matrix)[:, model["mot_index"]].tolist()
     predictions = model["classifier"].predict(matrix).tolist()
-    cluster_ids = model["clusterer"].predict(matrix).tolist() if model.get("clusterer") is not None else [None] * len(records)
+    cluster_ids = (
+        model["clusterer"].predict(matrix).tolist()
+        if model.get("clusterer") is not None
+        else [None] * len(records)
+    )
     return [
         {
             **record,
@@ -342,5 +435,7 @@ def prioritize(records: list[dict[str, Any]], model_path: str | Path) -> list[di
             "priority_model_id": model["model_id"],
             **({"cluster": int(cluster)} if cluster is not None else {}),
         }
-        for record, probability, prediction, cluster in zip(records, probabilities, predictions, cluster_ids)
+        for record, probability, prediction, cluster in zip(
+            records, probabilities, predictions, cluster_ids
+        )
     ]

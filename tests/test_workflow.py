@@ -1,8 +1,7 @@
 import json
-from pathlib import Path
-import sqlite3
 import tempfile
 import unittest
+from pathlib import Path
 
 from nbim_flow.agents import demo_propose, validate_decision
 from nbim_flow.data import prepare_csv, safe_record
@@ -15,8 +14,17 @@ POLICY = ROOT / "policies/nbim_2025.json"
 
 
 def agenda(text="Require an independent chair", **kwargs):
-    return safe_record(dict(source="upload", company="DEMO", meeting_id="meeting-1",
-                            item_no="1", meeting_date="2025-06-01", proposal_text=text, **kwargs))
+    return safe_record(
+        dict(
+            source="upload",
+            company="DEMO",
+            meeting_id="meeting-1",
+            item_no="1",
+            meeting_date="2025-06-01",
+            proposal_text=text,
+            **kwargs,
+        )
+    )
 
 
 class FakeAgents:
@@ -39,8 +47,11 @@ class FakeAgents:
 
     def review(self, record, rules, candidate):
         self.reviews += 1
-        return {"accepted": self.reviews > self.reject and not self.missing,
-                "retryable": not self.missing, "reason": "Kontrollerte kilde og begrunnelse"}
+        return {
+            "accepted": self.reviews > self.reject and not self.missing,
+            "retryable": not self.missing,
+            "reason": "Kontrollerte kilde og begrunnelse",
+        }
 
 
 class WorkflowTests(unittest.TestCase):
@@ -59,7 +70,9 @@ class WorkflowTests(unittest.TestCase):
         summary = self.run_cases(records)
         self.assertEqual(summary["processed"], 4)
         results = load_results(self.db)
-        self.assertEqual(sorted(r["vote"] for r in results), sorted(["FOR", "MOT", "AVSTÅ", "AVSTÅ"]))
+        self.assertEqual(
+            sorted(r["vote"] for r in results), sorted(["FOR", "MOT", "AVSTÅ", "AVSTÅ"])
+        )
         self.assertTrue(all(r["needs_human_review"] for r in results))
         self.assertEqual(sum(r["fallback_type"] == "prompt_injection" for r in results), 1)
         self.assertEqual(self.run_cases(records)["skipped"], 4)
@@ -86,7 +99,9 @@ class WorkflowTests(unittest.TestCase):
     def test_labels_do_not_invalidate_case_but_evidence_does(self):
         record = agenda()
         self.run_cases([record])
-        self.assertEqual(self.run_cases([dict(record, nbim_vote="MOT", rationale_text="secret")])["skipped"], 1)
+        self.assertEqual(
+            self.run_cases([dict(record, nbim_vote="MOT", rationale_text="secret")])["skipped"], 1
+        )
         self.run_cases([dict(record, proposal_text="Introduce a staggered board")])
         results = load_results(self.db)
         self.assertEqual(len(results), 2)
@@ -128,10 +143,15 @@ class WorkflowTests(unittest.TestCase):
 
     def test_future_policy_cannot_be_used_for_earlier_or_later_year(self):
         agents = FakeAgents()
-        records = [dict(agenda(), meeting_date="2024-06-01"), dict(agenda(), meeting_date="2026-06-01")]
+        records = [
+            dict(agenda(), meeting_id="m2024", meeting_date="2024-06-01"),
+            dict(agenda(), meeting_id="m2026", meeting_date="2026-06-01"),
+        ]
         self.run_cases(records, mode="llm", agents=agents)
         self.assertEqual(agents.calls, 0)
-        self.assertTrue(all(r["fallback_type"] == "policy_unavailable" for r in load_results(self.db)))
+        self.assertTrue(
+            all(r["fallback_type"] == "policy_unavailable" for r in load_results(self.db))
+        )
 
     def test_new_batch_moves_past_cached_cases(self):
         records = [dict(agenda(), item_no=str(i)) for i in range(3)]

@@ -18,18 +18,31 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-
 _FACT_FIELDS = (
-    "source", "company_id", "company", "ticker", "country", "market",
-    "meeting_id", "meeting_date", "item_no", "proposal_number",
-    "proposal_text", "proponent", "mgmt_rec",
+    "source",
+    "company_id",
+    "company",
+    "ticker",
+    "country",
+    "market",
+    "meeting_id",
+    "meeting_date",
+    "item_no",
+    "proposal_number",
+    "proposal_text",
+    "proponent",
+    "mgmt_rec",
 )
 SAFE_FIELDS = ("record_id", *_FACT_FIELDS, "evidence_hash", "topic")
 PREPROCESSING_VERSION = "1.0.0"
 _SOURCES = {"real", "npx", "upload"}
 _VOTES = {
-    "FOR": "FOR", "AGAINST": "MOT", "MOT": "MOT",
-    "WITHHOLD": "MOT", "ABSTAIN": "AVSTÅ", "AVSTÅ": "AVSTÅ",
+    "FOR": "FOR",
+    "AGAINST": "MOT",
+    "MOT": "MOT",
+    "WITHHOLD": "MOT",
+    "ABSTAIN": "AVSTÅ",
+    "AVSTÅ": "AVSTÅ",
     "AVSTA": "AVSTÅ",
 }
 
@@ -49,8 +62,9 @@ def normalize_vote(value: Any) -> str | None:
 
 
 def _hash(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True,
-                         separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -94,7 +108,10 @@ def safe_record(record: dict[str, Any]) -> dict[str, Any]:
 
 def _valid_date(value: str) -> bool:
     try:
-        return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)) and date.fromisoformat(value) is not None
+        return (
+            bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
+            and date.fromisoformat(value) is not None
+        )
     except ValueError:
         return False
 
@@ -118,8 +135,12 @@ def _label(raw: dict[str, Any], record_id: str) -> dict[str, Any]:
         flags.append("missing_company_id")
     if not _text(raw.get("country")):
         flags.append("missing_country")
-    disqualifying = {"unknown_vote_label", "inconsistent_vote_label",
-                     "funds_disagree", "source_quality_flag"}
+    disqualifying = {
+        "unknown_vote_label",
+        "inconsistent_vote_label",
+        "funds_disagree",
+        "source_quality_flag",
+    }
     return {
         "record_id": record_id,
         "vote_label": vote,
@@ -149,6 +170,12 @@ def prepare_csv(path: str | Path, source: str) -> dict[str, Any]:
         if len(set(reader.fieldnames)) != len(reader.fieldnames):
             raise ValueError("CSV has duplicate column names")
         columns = list(reader.fieldnames)
+        required = {"meeting_id", "meeting_date", "proposal_text"}
+        missing = required.difference(columns)
+        if missing or not {"item_no", "proposal_number"}.intersection(columns):
+            raise ValueError(
+                "CSV mangler agendakolonner: meeting_id, meeting_date, proposal_text og item_no/proposal_number"
+            )
         raw_rows = list(reader)
 
     missingness = {key: sum(not _text(row.get(key)) for row in raw_rows) for key in columns}
@@ -159,10 +186,18 @@ def prepare_csv(path: str | Path, source: str) -> dict[str, Any]:
     records = []
     labels = []
 
-    def reject(row_number: int, raw: dict[str, Any], reasons: list[str], record_id: str | None) -> None:
-        quarantine.append({"source": source, "row_number": row_number,
-                           "record_id": record_id, "reasons": reasons,
-                           "record": raw})
+    def reject(
+        row_number: int, raw: dict[str, Any], reasons: list[str], record_id: str | None
+    ) -> None:
+        quarantine.append(
+            {
+                "source": source,
+                "row_number": row_number,
+                "record_id": record_id,
+                "reasons": reasons,
+                "record": raw,
+            }
+        )
 
     for row_number, raw in enumerate(raw_rows, start=2):
         vote = normalize_vote(_text(raw.get("nbim_vote_raw")) or raw.get("nbim_vote"))
@@ -182,8 +217,9 @@ def prepare_csv(path: str | Path, source: str) -> dict[str, Any]:
     duplicate_rows = 0
     conflicting_ids = 0
     for record_id, group in groups.items():
-        signatures = {_hash({key: _text(value) for key, value in raw.items()})
-                      for _, raw, _ in group}
+        signatures = {
+            _hash({key: _text(value) for key, value in raw.items()}) for _, raw, _ in group
+        }
         duplicate_rows += len(group) - len(signatures)
         if len(signatures) > 1:
             conflicting_ids += 1
@@ -216,11 +252,17 @@ def prepare_csv(path: str | Path, source: str) -> dict[str, Any]:
         "conflicting_ids": conflicting_ids,
         "unknown_labels": label_counts["UNKNOWN"],
         "label_counts": dict(label_counts),
-        "accepted_label_counts": dict(Counter(label["vote_label"] or "UNKNOWN" for label in labels)),
+        "accepted_label_counts": dict(
+            Counter(label["vote_label"] or "UNKNOWN" for label in labels)
+        ),
         "training_eligible": sum(label["training_eligible"] for label in labels),
         "missingness": missingness,
-        "quality_flag_counts": dict(Counter(flag for label in labels for flag in label["quality_flags"])),
-        "quarantine_reason_counts": dict(Counter(reason for row in quarantine for reason in row["reasons"])),
+        "quality_flag_counts": dict(
+            Counter(flag for label in labels for flag in label["quality_flags"])
+        ),
+        "quarantine_reason_counts": dict(
+            Counter(reason for row in quarantine for reason in row["reasons"])
+        ),
         "date_range": {"min": min(dates) if dates else None, "max": max(dates) if dates else None},
         "notes": [
             "Label counts and missingness cover all input rows, before deduplication.",
