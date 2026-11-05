@@ -37,22 +37,39 @@ function Curve({ curve, at, base }: { curve: CurvePoint[]; at: number; base: num
   const cur = curve[at],
     def = curve[base];
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="curve" role="img" aria-label="Recall og presisjon mot andel saker til full vurdering">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="curve"
+      role="img"
+      aria-label="Recall og presisjon mot andel saker til full vurdering"
+    >
       <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} className="axis" />
       <line x1={pad} y1={pad} x2={pad} y2={h - pad} className="axis" />
       {[0.25, 0.5, 0.75, 1].map((g) => (
         <g key={g}>
           <line x1={pad} y1={y(g)} x2={w - pad} y2={y(g)} className="grid" />
-          <text x={pad - 6} y={y(g) + 3} textAnchor="end">{Math.round(g * 100)}</text>
+          <text x={pad - 6} y={y(g) + 3} textAnchor="end">
+            {Math.round(g * 100)}
+          </text>
         </g>
       ))}
       <path d={line('recall')} className="recall" />
       <path d={line('precision')} className="precision" />
-      <line x1={x(def.review_share)} y1={pad} x2={x(def.review_share)} y2={h - pad} className="default" />
+      <line
+        x1={x(def.review_share)}
+        y1={pad}
+        x2={x(def.review_share)}
+        y2={h - pad}
+        className="default"
+      />
       <circle cx={x(cur.review_share)} cy={y(cur.recall)} r={4.5} className="recall" />
       <circle cx={x(cur.review_share)} cy={y(cur.precision)} r={4.5} className="precision" />
-      <text x={w - pad} y={h - 8} textAnchor="end">andel saker til full vurdering →</text>
-      <text x={x(def.review_share) + 4} y={pad + 9}>standard</text>
+      <text x={w - pad} y={h - 8} textAnchor="end">
+        andel saker til full vurdering →
+      </text>
+      <text x={x(def.review_share) + 4} y={pad + 9}>
+        standard
+      </text>
     </svg>
   );
 }
@@ -181,7 +198,9 @@ export function ModelView() {
           <div>
             <span>Recall</span>
             <strong className="recall">{pct(p.recall)}</strong>
-            <small>{p.tp} av {v.all.against} funnet</small>
+            <small>
+              {p.tp} av {v.all.against} funnet
+            </small>
           </div>
           <div>
             <span>Presisjon</span>
@@ -191,12 +210,20 @@ export function ModelView() {
           <div>
             <span>F1</span>
             <strong>{p.f1.toFixed(2)}</strong>
-            <small>{at === base ? 'standard' : p.f1 > card.curve[base].f1 ? 'over standard' : 'under standard'}</small>
+            <small>
+              {at === base
+                ? 'standard'
+                : p.f1 > card.curve[base].f1
+                  ? 'over standard'
+                  : 'under standard'}
+            </small>
           </div>
           <div>
             <span>Full vurdering</span>
             <strong>{pct(p.review_share)}</strong>
-            <small>{number(p.flagged)} av {number(v.all.items)} saker</small>
+            <small>
+              {number(p.flagged)} av {number(v.all.items)} saker
+            </small>
           </div>
         </div>
         <Curve curve={card.curve} at={at} base={base} />
@@ -233,7 +260,11 @@ export function ModelView() {
             </thead>
             <tbody>
               <Row name="Saker uten person" m={v.lane_A} ap={v.average_precision_A} />
-              <Row name="Personsaker (styrevalg, ansvarsfrihet)" m={v.lane_B} ap={v.average_precision_B} />
+              <Row
+                name="Personsaker (styrevalg, ansvarsfrihet)"
+                m={v.lane_B}
+                ap={v.average_precision_B}
+              />
               <Row name="Samlet" m={v.all} ap={v.average_precision} />
               <Row name="Alltid følg styret (baseline)" m={v.always_with_board} ap={prevalence} />
             </tbody>
@@ -253,7 +284,11 @@ export function ModelView() {
           {card.top_signals.map((s) => (
             <div className="signal" key={s.feature}>
               <span>{s.label}</span>
-              <i style={{ width: `${Math.min(100, (s.weight / card.top_signals[0].weight) * 100)}%` }} />
+              <i
+                style={{
+                  width: `${Math.min(100, (s.weight / card.top_signals[0].weight) * 100)}%`,
+                }}
+              />
             </div>
           ))}
         </section>
@@ -262,22 +297,32 @@ export function ModelView() {
             <Lock size={12} /> KONTROLLER
           </span>
           <ul className="control-list">
-            <li>Tidsdelt: trent ≤ {card.trained_through}, validert på {v.year}. 2025–2026 er låst testsett.</li>
-            <li>Historikk bruker bare møter med tidligere dato; testet ved å snu alle senere fasitsvar.</li>
+            <li>
+              Tidsdelt: trent ≤ {card.trained_through}, validert på {v.year}. 2025–2026 er låst
+              testsett.
+            </li>
+            <li>
+              Historikk bruker bare møter med tidligere dato; testet ved å snu alle senere
+              fasitsvar.
+            </li>
             <li>Personnavn og årstall maskeres; modellen lærer struktur, ikke navn.</li>
             <li>Begrunnelser, posisjonsnotater og NBIMs stemme er aldri input.</li>
             <li>Sakstype beregnes når den mangler (treffsikkerhet {pct(card.type_accuracy)}).</li>
             <li>
-              {card.light_workers} parallelle lette kontroller; feiler en kontroll, går saken til full vurdering.
+              {card.light_workers} parallelle lette kontroller; feiler en kontroll, går saken til
+              full vurdering.
             </li>
           </ul>
-          <code className="sha">data {card.data_sha256.slice(0, 16)}… · {card.version}</code>
+          <code className="sha">
+            data {card.data_sha256.slice(0, 16)}… · {card.version}
+          </code>
         </section>
       </div>
 
       <section className="panel catalogue-panel">
         <span className="eyebrow">
-          <ShieldCheck size={12} /> NBIMS BEGRUNNELSER PER RETNINGSLINJE (2019–{card.trained_through})
+          <ShieldCheck size={12} /> NBIMS BEGRUNNELSER PER RETNINGSLINJE (2019–
+          {card.trained_through})
         </span>
         {Object.entries(card.catalogue).map(([id, c]) => (
           <details key={id}>

@@ -32,7 +32,9 @@ def parser_for_cli():
     backup.add_argument("--out", type=Path, required=True)
     activate = commands.add_parser("activate-model")
     activate.add_argument("run_id")
-    triage = commands.add_parser("triage-train", help="Tren triagemodellen (LR) fra data/real_votes.csv")
+    triage = commands.add_parser(
+        "triage-train", help="Tren triagemodellen (LR) fra data/real_votes.csv"
+    )
     triage.add_argument("--last-train-year", type=int, default=2023)
     triage.add_argument("--out", type=Path)
     for name in ("prepare", "train", "process", "evaluate"):
@@ -105,7 +107,10 @@ def main(argv=None):
             from .triage import train
 
             out = settings.path(args.out) if args.out else settings.triage_model_path
-            emit(train(settings.root / "data/real_votes.csv", out, args.last_train_year) | {"path": str(out)})
+            emit(
+                train(settings.root / "data/real_votes.csv", out, args.last_train_year)
+                | {"path": str(out)}
+            )
         elif args.command == "activate-model":
             from .registry import activate_run
 

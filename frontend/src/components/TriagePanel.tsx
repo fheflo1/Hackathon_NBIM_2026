@@ -54,7 +54,9 @@ export function TriagePanel({ item }: { item: Item }) {
             sammenlignbare saker i valideringsåret
           </small>
         </div>
-        <span className={'risk-chip ' + (t.flagged ? 'flagged' : it.escalated ? 'escalated' : 'light')}>
+        <span
+          className={'risk-chip ' + (t.flagged ? 'flagged' : it.escalated ? 'escalated' : 'light')}
+        >
           {t.flagged ? 'Full vurdering' : it.escalated ? 'Eskalert' : 'Lett kontroll'}
         </span>
       </div>
@@ -106,7 +108,9 @@ export function TriagePanel({ item }: { item: Item }) {
             <Zap size={12} /> LETT AGENTKONTROLL
           </span>
           <p>
-            <strong>{it.light_check.decision === 'FOLLOW_BOARD' ? 'Følg styret' : 'Eskaler'}</strong>
+            <strong>
+              {it.light_check.decision === 'FOLLOW_BOARD' ? 'Følg styret' : 'Eskaler'}
+            </strong>
             {it.light_check.guideline && it.light_check.guideline !== 'none'
               ? ` · ${it.light_check.guideline}`
               : ''}{' '}
@@ -132,7 +136,10 @@ export function TriagePanel({ item }: { item: Item }) {
         )}
       </div>
       <div className="inline-facts">
-        <span>Sakstype {t.proposal_type.toLowerCase().replace(/_/g, ' ')}{t.type_inferred ? ' (beregnet)' : ''}</span>
+        <span>
+          Sakstype {t.proposal_type.toLowerCase().replace(/_/g, ' ')}
+          {t.type_inferred ? ' (beregnet)' : ''}
+        </span>
         <span>{t.company_known ? 'Kjent selskap' : 'Ukjent selskap: ingen historikk'}</span>
         <span>{t.model_version}</span>
       </div>

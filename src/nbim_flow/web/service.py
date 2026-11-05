@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 import sqlite3
 import threading
 import time
@@ -17,14 +18,14 @@ from pathlib import Path
 from .. import triage as triage_lib
 from ..local_model import model_identity
 from ..operations import provider_error
-from ..policy import load_policy
+from ..policy import injection_signals, load_policy, retrieve
 from ..store import AuditStore, load_events, now
 from ..workflow import pipeline_fingerprint, process_records
 from .ingestion import MAX_BYTES, read_agenda
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"completed", "needs_attention", "failed"}
-LIGHT_VERSION = "light-check-v5"  # bump when prompts change: re-uploads re-run
+LIGHT_VERSION = "light-check-v6"  # bump when prompts change: re-uploads re-run
 NBIM_VOTING_URL = "https://www.nbim.no/en/responsible-investment/voting/our-voting-records/"
 
 
@@ -358,7 +359,9 @@ class AgendaService:
             else None
         )
         if result is None or result["status"] == "processing":
-            raise ValueError("Saken behandles av en annen prosess. Last opp igjen når den er ferdig.")
+            raise ValueError(
+                "Saken behandles av en annen prosess. Last opp igjen når den er ferdig."
+            )
         trace = load_events(self.settings.database_path, result["run_key"])
         with self.lock:
             public = public_result(result, trace)
@@ -466,7 +469,7 @@ class AgendaService:
     def _light_check(self, record, scores, catalogue):
         out, ms = self._llm(
             triage_lib.CHECK_INSTRUCTIONS,
-            triage_lib.llm_payload(record, scores, catalogue),
+            triage_lib.llm_payload(record, scores, catalogue) + self._rules_text(record),
             triage_lib.CHECK_SCHEMA,
             {
                 "decision": "ESCALATE",
@@ -477,10 +480,21 @@ class AgendaService:
         )
         return dict(out, duration_ms=ms)
 
+    def policy(self):
+        return load_policy(self.settings.policy_path)
+
+    def _rules_text(self, record):
+        rules = retrieve(record, self.policy())
+        if not rules:
+            return ""
+        return "\nCurated NBIM policy rules that may apply (team paraphrases): " + " | ".join(
+            f"{r['id']}: {r['text']}" for r in rules
+        )
+
     def _note(self, record, scores, catalogue):
         out, ms = self._llm(
             triage_lib.NOTE_INSTRUCTIONS,
-            triage_lib.llm_payload(record, scores, catalogue),
+            triage_lib.llm_payload(record, scores, catalogue) + self._rules_text(record),
             triage_lib.NOTE_SCHEMA,
             {
                 "guideline": scores.get("suggested_guideline") or "none",
@@ -499,25 +513,57 @@ class AgendaService:
             key=lambda i: -items[i]["triage"]["risk"],
         )
         unscored = [i for i, item in enumerate(items) if not item["triage"]]
-        low = [i for i, item in enumerate(items) if item["triage"] and not item["triage"]["flagged"]]
-        queue = deque(flagged + unscored)
+        low = [
+            i for i, item in enumerate(items) if item["triage"] and not item["triage"]["flagged"]
+        ]
+        # The light path must never bypass the agent's safety gate: injection-like or oversized
+        # text goes to the full flow, where the gate sends it to a human without a model call.
+        guarded = [
+            i
+            for i in low
+            if injection_signals(records[i]["proposal_text"])
+            or len(records[i]["proposal_text"]) > self.settings.max_input_characters
+        ]
+        for i in guarded:
+            items[i]["safety_routed"] = True
+            self._event(job_id, "safety_routed", {"record_id": records[i]["record_id"]})
+        # Items an explicit curated rule covers (its pattern matches, inside the policy's date
+        # window) belong to the full agent, which applies that rule; the light check never overrides it.
+        covered = {}
+        for i in low:
+            if i not in guarded and (rule := policy_rule_hit(records[i], self.policy())):
+                covered[i] = rule
+                items[i]["policy_routed"] = rule
+                self._event(
+                    job_id, "policy_routed", {"record_id": records[i]["record_id"], "rule": rule}
+                )
+        low = [i for i in low if i not in guarded and i not in covered]
+        queue = deque(flagged + guarded + list(covered) + unscored)
         with ThreadPoolExecutor(
             max_workers=self.settings.light_workers, thread_name_prefix="light"
         ) as pool:
             futures = {
-                pool.submit(self.light_checker, records[i], items[i]["triage"], catalogue): ("check", i)
+                pool.submit(self.light_checker, records[i], items[i]["triage"], catalogue): (
+                    "check",
+                    i,
+                )
                 for i in low
             }
             futures.update(
                 {
-                    pool.submit(self.note_writer, records[i], items[i]["triage"], catalogue): ("note", i)
+                    pool.submit(self.note_writer, records[i], items[i]["triage"], catalogue): (
+                        "note",
+                        i,
+                    )
                     for i in flagged
                 }
             )
             pending = set(futures)
             while queue or pending:
                 if self.stop.is_set():
-                    raise ValueError("Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette.")
+                    raise ValueError(
+                        "Kjøringen ble avbrutt. Last opp filen på nytt for å fortsette."
+                    )
                 for future in [f for f in pending if f.done()]:
                     pending.discard(future)
                     self._harvest(job_id, future, futures[future], records, items, queue, counters)
@@ -533,7 +579,13 @@ class AgendaService:
         try:
             out = future.result()
         except Exception:  # noqa: BLE001 - defensive: an unexpected error escalates
-            out = {"decision": "ESCALATE", "guideline": "none", "reason": "", "confidence": 0.0, "failed": True}
+            out = {
+                "decision": "ESCALATE",
+                "guideline": "none",
+                "reason": "",
+                "confidence": 0.0,
+                "failed": True,
+            }
         record, item = records[index], items[index]
         with self.lock:
             if kind == "note":
@@ -557,7 +609,11 @@ class AgendaService:
             unsure = float(out.get("confidence") or 0.0) < self.settings.min_confidence
             if out.get("failed") or out.get("decision") != "FOLLOW_BOARD" or unsure:
                 out["escalation_reason"] = (
-                    "failed" if out.get("failed") else "doubt" if out.get("decision") != "FOLLOW_BOARD" else "low_confidence"
+                    "failed"
+                    if out.get("failed")
+                    else "doubt"
+                    if out.get("decision") != "FOLLOW_BOARD"
+                    else "low_confidence"
                 )
                 counters["escalated"] += 1
                 item["escalated"] = True
@@ -569,7 +625,9 @@ class AgendaService:
                     escalated=counters["escalated"],
                 )
                 return
-            item["result"] = light_result(record, item["triage"], out, self.triage_model().b["catalogue"])
+            item["result"] = light_result(
+                record, item["triage"], out, self.triage_model().b["catalogue"]
+            )
             counters["done"] += 1
             self.update(
                 job_id,
@@ -578,6 +636,15 @@ class AgendaService:
                 light_calls=counters["light_calls"],
                 escalated=counters["escalated"],
             )
+
+
+def policy_rule_hit(record, policy):
+    """Id of a curated rule whose explicit pattern matches this item (date window respected)."""
+    for rule in retrieve(record, policy, top_k=len(policy["rules"])):
+        for pattern in rule.get("demo_patterns", []):
+            if re.fullmatch(pattern["pattern"], record["proposal_text"], re.IGNORECASE):
+                return rule["id"]
+    return None
 
 
 def triage_event(item):
