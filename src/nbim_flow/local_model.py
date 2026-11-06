@@ -15,6 +15,13 @@ from .agents import (
 from .data import safe_record
 
 
+def structured_output_options(model):
+    """Qwen3 uses non-thinking mode so its small JSON budget reaches the final answer."""
+    if model.split(":", 1)[0].lower() == "qwen3":
+        return {"think": False}
+    return {}
+
+
 class LocalProviderError(RuntimeError):
     def __init__(self, status_code):
         self.status_code = status_code
@@ -43,6 +50,7 @@ class OllamaAgents:
             "/api/chat",
             json={
                 "model": model,
+                **structured_output_options(model),
                 "stream": False,
                 "format": schema,
                 "keep_alive": "5m",

@@ -939,8 +939,11 @@ def ollama_json(
 ) -> dict:
     import httpx
 
+    from .local_model import structured_output_options
+
     body = {
         "model": settings.model,
+        **structured_output_options(settings.model),
         "stream": False,
         "format": schema,
         "keep_alive": "5m",

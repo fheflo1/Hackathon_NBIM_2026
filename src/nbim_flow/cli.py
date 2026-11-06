@@ -78,7 +78,7 @@ def main(argv=None):
             if result["created"] and args.model:
                 path = Path(result["path"])
                 path.write_text(
-                    path.read_text().replace("LLM_MODEL=qwen2.5:7b", f"LLM_MODEL={args.model}")
+                    path.read_text().replace("LLM_MODEL=qwen3:8b", f"LLM_MODEL={args.model}")
                 )
             emit(result)
         elif args.command == "doctor":

@@ -90,7 +90,7 @@ class Settings:
         model = (
             env.get("LLM_MODEL")
             or env.get("OPENAI_MODEL")
-            or ("qwen2.5:7b" if provider == "ollama" else "")
+            or ("qwen3:8b" if provider == "ollama" else "")
         ).strip()
         reviewer = (
             env.get("LLM_REVIEWER_MODEL") or env.get("OPENAI_REVIEWER_MODEL") or model

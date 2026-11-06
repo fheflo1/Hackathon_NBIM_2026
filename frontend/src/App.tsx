@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
-  Check,
   CheckCheck,
   ChevronDown,
   CircleAlert,
@@ -19,7 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from './lib/api';
 import type { Bootstrap, Job, JobSummary } from './lib/types';
-import { date, finished, labels, number, stages } from './lib/format';
+import { date, finished, labels, stages } from './lib/format';
 import { Results } from './components/Results';
 import { DataView } from './components/DataView';
 import { AgentView } from './components/AgentView';
@@ -198,7 +197,13 @@ export function App() {
               <strong>{info?.model.provider === 'openai' ? 'API-modell' : 'Lokal modell'}</strong>
               <span>{info?.model.name || 'Kontrollerer oppsett …'}</span>
             </div>
-            <span className="model-tag">{info?.model.available ? 'KLAR' : 'VENTER'}</span>
+            <span className="model-tag">
+              {info?.model.available
+                ? info.model.provider === 'ollama'
+                  ? 'FUNNET'
+                  : 'SATT OPP'
+                : 'UTILGJENGELIG'}
+            </span>
           </div>
           <div className="sidebar-caption">
             Begrunnet. Kontrollert. Sporbart.
@@ -213,9 +218,9 @@ export function App() {
             VOTING TERMINAL<span>/</span>
             <strong>{activePage.title}</strong>
           </div>
-          <div className="topbar-status">
-            <span className="status-dot" />
-            {info?.model.provider === 'openai' ? 'Kjører via API' : 'Kjører lokalt'}
+          <div className="topbar-status" title={info?.model.detail}>
+            <span className={'status-dot ' + (info?.model.available ? '' : 'offline')} />
+            {info?.model.provider === 'openai' ? 'Behandling via API' : 'Lokal behandling'}
             <span className="avatar">NB</span>
           </div>
         </header>
@@ -247,21 +252,18 @@ export function App() {
                 <div>
                   <span className="eyebrow">FRA AGENDA TIL ANBEFALING</span>
                   <h1>
-                    Saksliste.
-                    <br />
-                    Kontrollert standpunkt<span className="green-period">.</span>
+                    Gjennomgå sakslisten<span className="green-period">.</span>
                   </h1>
                   <p>
-                    Last opp sakslisten. Agentene vurderer hvert punkt, kontrollerer grunnlaget og
-                    viser deg hvorfor.
+                    Last opp en saksliste. Se stemmeforslag, konfidens og kildegrunnlag per sak.
                   </p>
                 </div>
                 <div className="intro-stamp">
                   <ShieldCheck size={21} />
                   <span>
-                    Kilder bak
+                    For · Mot · Avstå
                     <br />
-                    <strong>hvert valg.</strong>
+                    <strong>Til din vurdering.</strong>
                   </span>
                   <span className="stamp-star">✳</span>
                 </div>
@@ -278,81 +280,96 @@ export function App() {
                   e.target.value = '';
                 }}
               />
-              <div className="upload-layout">
-                <section
-                  className={'upload-zone ' + (drag ? 'dragging' : '')}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (!uploading) setDrag(true);
-                  }}
-                  onDragLeave={() => setDrag(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDrag(false);
-                    if (e.dataTransfer.files[0]) void upload(e.dataTransfer.files[0]);
-                  }}
-                >
-                  <div className="upload-icon">
-                    {uploading ? <LoaderCircle className="spin" size={24} /> : <Upload size={24} />}
-                  </div>
-                  <h2>
-                    {uploading
-                      ? 'Registrerer sakslisten …'
-                      : job
-                        ? 'Neste saksliste? Bare last opp.'
-                        : 'Slipp sakslisten her'}
-                  </h2>
-                  <p>PDF, CSV eller TXT · opptil 20 MB</p>
-                  <button
-                    className="button primary"
-                    disabled={uploading}
-                    onClick={() => input.current?.click()}
+              <details className="agenda-upload" open={!job}>
+                <summary>{job ? 'Last opp ny saksliste' : 'Last opp saksliste'}</summary>
+                <div className="upload-layout">
+                  <section
+                    className={'upload-zone ' + (drag ? 'dragging' : '')}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (!uploading) setDrag(true);
+                    }}
+                    onDragLeave={() => setDrag(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDrag(false);
+                      if (e.dataTransfer.files[0]) void upload(e.dataTransfer.files[0]);
+                    }}
                   >
-                    {uploading ? 'Laster opp …' : 'Last opp saksliste'}
-                    <ArrowUpRight size={17} />
-                  </button>
-                  <span className="upload-caption">
-                    Behandlingen starter automatisk. Ingen oppsett nødvendig.
+                    <div className="upload-icon">
+                      {uploading ? (
+                        <LoaderCircle className="spin" size={24} />
+                      ) : (
+                        <Upload size={24} />
+                      )}
+                    </div>
+                    <h2>
+                      {uploading
+                        ? 'Registrerer sakslisten …'
+                        : job
+                          ? 'Neste saksliste? Bare last opp.'
+                          : 'Slipp sakslisten her'}
+                    </h2>
+                    <p>PDF, CSV eller TXT · opptil 20 MB</p>
+                    <button
+                      className="button primary"
+                      disabled={uploading}
+                      onClick={() => input.current?.click()}
+                    >
+                      {uploading ? 'Laster opp …' : 'Last opp saksliste'}
+                      <ArrowUpRight size={17} />
+                    </button>
+                    <span className="upload-caption">
+                      Analysen starter automatisk når modellen er tilgjengelig.
+                    </span>
+                  </section>
+                  <section className="upload-side">
+                    <span className="eyebrow">SLIK BRUKER DU STEM</span>
+                    <div className="mini-process">
+                      <span>
+                        <FileText size={16} />
+                      </span>
+                      <div>
+                        <strong>1. Last opp sakslisten</strong>
+                        <small>PDF, CSV eller TXT. Hvert punkt blir en egen sak.</small>
+                      </div>
+                    </div>
+                    <div className="mini-process">
+                      <span>
+                        <Sparkles size={16} />
+                      </span>
+                      <div>
+                        <strong>2. Gå gjennom forslagene</strong>
+                        <small>Start med «Manuell». Klikk på en sak for grunnlaget.</small>
+                      </div>
+                    </div>
+                    <div className="mini-process">
+                      <span>
+                        <CheckCheck size={16} />
+                      </span>
+                      <div>
+                        <strong>3. Ta stilling og eksporter</strong>
+                        <small>Last ned CSV som underlag for videre behandling.</small>
+                      </div>
+                    </div>
+                    <button className="text-link" onClick={() => setPage('agents')}>
+                      Se hvordan agentene jobber
+                      <ArrowRight size={14} />
+                    </button>
+                  </section>
+                </div>
+              </details>
+              {info && (
+                <div className="workspace-context">
+                  <span>
+                    Policyutvalg · {info.policy.rules.length} regler ·{' '}
+                    {date(info.policy.valid_from)}–{date(info.policy.valid_through)}
                   </span>
-                </section>
-                <section className="upload-side">
-                  <span className="eyebrow">KONTROLLØP / 01–03</span>
-                  <div className="mini-process">
-                    <span>
-                      <FileText size={16} />
-                    </span>
-                    <div>
-                      <strong>Les og strukturer</strong>
-                      <small>Hvert agendapunkt blir en egen sak.</small>
-                    </div>
-                    <Check size={13} />
-                  </div>
-                  <div className="mini-process">
-                    <span>
-                      <Sparkles size={16} />
-                    </span>
-                    <div>
-                      <strong>Vurder og begrunn</strong>
-                      <small>Stemmevalg, konfidens og kilder.</small>
-                    </div>
-                    <Check size={13} />
-                  </div>
-                  <div className="mini-process">
-                    <span>
-                      <CheckCheck size={16} />
-                    </span>
-                    <div>
-                      <strong>Kontroller og lagre</strong>
-                      <small>En ny agent etterprøver svaret.</small>
-                    </div>
-                    <Check size={13} />
-                  </div>
-                  <button className="text-link" onClick={() => setPage('agents')}>
-                    Se hvordan agentene jobber
-                    <ArrowRight size={14} />
+                  <button className="text-link" onClick={() => setPage('data')}>
+                    Datagrunnlag <ArrowRight size={14} />
                   </button>
-                </section>
-              </div>
+                </div>
+              )}
               {info && !info.model.available && (
                 <div className="notice amber">
                   <CircleAlert size={18} />
@@ -450,55 +467,6 @@ export function App() {
                     </div>
                   )}
                 </>
-              )}
-              {!job && (
-                <section className="foundation">
-                  <div className="section-heading">
-                    <div>
-                      <span className="eyebrow">ARBEIDET BAK VALGENE</span>
-                      <h2>Bygget på et tydelig datagrunnlag.</h2>
-                    </div>
-                    <button className="text-link" onClick={() => setPage('data')}>
-                      Utforsk dataene
-                      <ArrowRight size={15} />
-                    </button>
-                  </div>
-                  <div className="foundation-grid">
-                    <article>
-                      <span className="square-icon pale">
-                        <Database size={19} />
-                      </span>
-                      <strong>
-                        {info
-                          ? number(
-                              info.sources.find((s) => s.id === 'real')?.report.total_rows || 0,
-                            )
-                          : '—'}
-                      </strong>
-                      <span>historiske NBIM-stemmer</span>
-                      <p>
-                        Historikken brukes til analyse og modellvurdering. Agentene får aldri
-                        fasiten.
-                      </p>
-                    </article>
-                    <article>
-                      <span className="square-icon lilac">
-                        <ShieldCheck size={19} />
-                      </span>
-                      <strong>{info?.policy.rules.length || '—'} retningslinjer</strong>
-                      <span>et kuratert utvalg fra NBIM 2025</span>
-                      <p>Utenfor datovinduet eller policydekningen kreves manuell vurdering.</p>
-                    </article>
-                    <article>
-                      <span className="square-icon peach">
-                        <GitBranch size={19} />
-                      </span>
-                      <strong>To agentroller</strong>
-                      <span>vurdering + separat kontroll</span>
-                      <p>Ordrette sitater, avgrensede forsøk og sporbar historikk for hver sak.</p>
-                    </article>
-                  </div>
-                </section>
               )}
               {jobs.length > 0 && (
                 <section className="history-section">

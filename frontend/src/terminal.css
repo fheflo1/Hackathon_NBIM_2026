@@ -462,7 +462,7 @@ small {
   background: #ffad45;
   border-radius: 0;
 }
-.app-shell .vote-stats > div {
+.app-shell .vote-stats > :is(div, button) {
   background: #111b27;
   border-color: #2d394a;
   border-radius: 3px;
@@ -1060,7 +1060,7 @@ small {
   .app-shell .flow-node p {
     font-size: 11px;
   }
-  .app-shell .vote-stats > div {
+  .app-shell .vote-stats > :is(div, button) {
     padding: 14px;
   }
   .app-shell .vote-stats strong {
@@ -1078,4 +1078,55 @@ small {
   padding: 14px 6px 0;
   text-align: center;
   line-height: 1.7;
+}
+
+.app-shell .vote-stats > button {
+  border: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 7px;
+  align-items: center;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    border-color 120ms,
+    background 120ms;
+}
+.app-shell .vote-stats > button:hover {
+  border-color: #758aa4;
+  background: #182536;
+}
+.app-shell .vote-stats > button[aria-pressed='true'] {
+  border-color: var(--terminal-orange);
+  background: #24221e;
+}
+.app-shell .vote-stats > button.needs-attention {
+  border-top-color: var(--terminal-orange);
+}
+
+.agenda-upload {
+  margin-bottom: 14px;
+}
+.agenda-upload > summary {
+  padding: 12px 0;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.agenda-upload > summary::marker {
+  color: var(--terminal-orange);
+}
+.agenda-upload .upload-layout {
+  margin-bottom: 0;
+}
+.workspace-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 24px;
 }

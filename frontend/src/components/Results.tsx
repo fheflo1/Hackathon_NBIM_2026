@@ -14,6 +14,7 @@ import {
 import type { Item, Job } from '../lib/types';
 import { confidence, date, number, tally } from '../lib/format';
 import { RiskCell, TriagePanel } from './TriagePanel';
+import { triaged } from '../model/types';
 
 export function VoteBadge({ item }: { item: Item }) {
   const r = item.result;
@@ -50,7 +51,10 @@ export function Results({ job }: { job: Job }) {
       <div className="section-heading">
         <div>
           <span className="eyebrow">SAKSLISTEN</span>
-          <h2>Anbefalinger, med grunnlag.</h2>
+          <h2>Stemmeforslag per sak</h2>
+          <p className="muted small">
+            Klikk på et stemmetall for å filtrere, eller en sak for detaljer.
+          </p>
         </div>
         <a className="button secondary compact" href={`/api/jobs/${job.id}/export.csv`}>
           <ArrowDownToLine size={15} /> Eksporter CSV
@@ -58,19 +62,31 @@ export function Results({ job }: { job: Job }) {
       </div>
       <div className="vote-stats">
         {(['FOR', 'MOT', 'AVSTÅ'] as const).map((v) => (
-          <div key={v}>
+          <button
+            key={v}
+            type="button"
+            aria-pressed={filter === v}
+            onClick={() => setFilter(filter === v ? 'Alle' : v)}
+            title={`Vis ${v === 'FOR' ? 'For' : v === 'MOT' ? 'Mot' : 'Avstå'}-saker`}
+          >
             <span className={'dot ' + v.toLowerCase()} />
             <span>{v === 'FOR' ? 'For' : v === 'MOT' ? 'Mot' : 'Avstå'}</span>
             <strong>{number(counts[v])}</strong>
-            <small>kontrollert</small>
-          </div>
+            <small>stemmeforslag</small>
+          </button>
         ))}
-        <div>
+        <button
+          type="button"
+          className={counts.manual ? 'needs-attention' : ''}
+          aria-pressed={filter === 'Manuell'}
+          onClick={() => setFilter(filter === 'Manuell' ? 'Alle' : 'Manuell')}
+          title="Vis saker som må følges opp"
+        >
           <span className="dot manual" />
           <span>Manuell</span>
           <strong>{number(counts.manual)}</strong>
           <small>må følges opp</small>
-        </div>
+        </button>
       </div>
       <div className="table-card">
         <div className="table-toolbar">
@@ -99,9 +115,9 @@ export function Results({ job }: { job: Job }) {
               <tr>
                 <th>Sak</th>
                 <th>Agendapunkt</th>
-                <th>Triage</th>
+                <th>Prioritering / kontroll</th>
                 <th>Anbefaling</th>
-                <th>Konfidens</th>
+                <th title="Agentens egen vurdering, ikke målt treffsikkerhet">Konfidens</th>
                 <th>Retningslinjer</th>
                 <th>
                   <span className="sr-only">Detaljer</span>
@@ -145,7 +161,7 @@ export function Results({ job }: { job: Job }) {
                           : ''}
                       </span>
                     ) : (
-                      <span className="muted">—</span>
+                      <span className="muted">{item.result ? 'Mangler kilder' : '—'}</span>
                     )}
                   </td>
                   <td>
@@ -164,10 +180,6 @@ export function Results({ job }: { job: Job }) {
           {items.length === 0 && <p className="empty-filter">Ingen saker i dette utvalget.</p>}
         </div>
       </div>
-      <p className="footnote">
-        Konfidens er agentens egen vurdering, ikke en målt sannsynlighet for korrekt stemme. Manuell
-        vurdering holdes utenfor de kontrollerte stemmetallene.
-      </p>
       {selectedItem && <Detail item={selectedItem} onClose={closeDetail} />}
     </section>
   );
@@ -235,9 +247,9 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
               )}
             </div>
             <div>
-              <span className="eyebrow">KONFIDENS</span>
+              <span className="eyebrow">AGENTENS KONFIDENS</span>
               <strong>{confidence(r)}</strong>
-              <small>agentens egen vurdering</small>
+              <small>ikke en målt treffsikkerhet</small>
             </div>
           </div>
           <TriagePanel item={item} />
@@ -265,7 +277,9 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
                   </span>
                   <p className="source-quote">“{c.evidence_quote}”</p>
                   <small>
-                    Retningslinjen er en kuratert parafrase. Lenken viser originalkilden.
+                    {triaged(item).result?.check === 'light'
+                      ? 'Historisk standardbegrunnelse fra NBIM. Lett kontroll har ikke samme sitatverifikasjon som fullflyten.'
+                      : 'Retningslinjen er en kuratert parafrase. Lenken viser originalkilden.'}
                   </small>
                 </article>
               ))
@@ -278,7 +292,10 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
           {r && (
             <section className="detail-block">
               <h3>
-                <CheckCheck size={17} /> Kontrollagentens vurdering
+                <CheckCheck size={17} />{' '}
+                {triaged(item).result?.check === 'light'
+                  ? 'Lett agentkontroll'
+                  : 'Kontrollagentens vurdering'}
               </h3>
               <p>{r.review_reason}</p>
               <div className="inline-facts">

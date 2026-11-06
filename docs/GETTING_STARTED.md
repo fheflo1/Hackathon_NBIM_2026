@@ -12,7 +12,7 @@ ollama list
 Bruk en installert modell, eller last ned Qwen:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen3:8b
 ```
 
 Nedlasting og nok arbeidsminne kreves før første lokale kjøring. Ytelsen avhenger av
@@ -38,11 +38,12 @@ I `.env` må `LLM_MODEL` samsvare med `ollama list`:
 ```dotenv
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://127.0.0.1:11434
-LLM_MODEL=qwen2.5:7b
-LLM_REVIEWER_MODEL=
+LLM_MODEL=qwen3:8b
+LLM_REVIEWER_MODEL=qwen3:8b
 ```
 
-Tom kontrollmodell bruker samme modell i et separat kall. API-nøkkel er ikke nødvendig.
+Begge agentroller bruker Qwen3 8B i separate kall. Tom kontrollmodell bruker vurderingsmodellen.
+Klienten slår av thinking for Qwen3 slik at JSON-svar får hele utbudsjettet. API-nøkkel er ikke nødvendig.
 Driftsgrenser står i `.env.example`. De stilles av prosjektansvarlig, ikke i brukerflaten.
 Terminalens miljøvariabler har prioritet over `.env`. Start appen på nytt etter endringer.
 

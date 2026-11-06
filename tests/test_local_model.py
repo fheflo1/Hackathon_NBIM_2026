@@ -1,14 +1,16 @@
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 
 from nbim_flow.agents import demo_propose
 from nbim_flow.config import Settings
 from nbim_flow.data import safe_record
-from nbim_flow.local_model import OllamaAgents
+from nbim_flow.local_model import OllamaAgents, structured_output_options
 from nbim_flow.policy import load_policy, retrieve
+from nbim_flow.triage import ollama_json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class LocalModelTests(unittest.TestCase):
     def test_native_schema_request_has_no_labels_and_normalized_usage(self):
         settings = Settings.from_env(
-            ROOT, environ={"LLM_PROVIDER": "ollama", "LLM_MODEL": "test:7b"}
+            ROOT, environ={"LLM_PROVIDER": "ollama", "LLM_MODEL": "qwen3:8b"}
         )
         record = safe_record(
             dict(
@@ -56,9 +58,26 @@ class LocalModelTests(unittest.TestCase):
             self.assertNotIn("LEAK", json.dumps(requests))
             self.assertEqual(requests[0]["format"]["type"], "object")
             self.assertFalse(requests[0]["stream"])
+            self.assertIs(requests[0]["think"], False)
             self.assertEqual(agents.last_usage["usage"], {"input_tokens": 111, "output_tokens": 42})
         finally:
             agents.close()
+
+    def test_qwen3_thinking_is_disabled_for_light_checks_too(self):
+        settings = Settings.from_env(ROOT, environ={"LLM_MODEL": "qwen3:8b"})
+        requests = []
+
+        def transport(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, json={"message": {"content": '{"decision":"ESCALATE"}'}})
+
+        client = httpx.Client(base_url=settings.base_url, transport=httpx.MockTransport(transport))
+        with patch("httpx.Client", return_value=client):
+            result = ollama_json(settings, "Return JSON", "agenda", {"type": "object"})
+        self.assertEqual(result["decision"], "ESCALATE")
+        self.assertIs(requests[0]["think"], False)
+        self.assertEqual(requests[0]["options"]["num_ctx"], settings.context_tokens)
+        self.assertEqual(structured_output_options("qwen2.5:7b"), {})
 
     def test_incomplete_local_output_fails(self):
         agents = OllamaAgents(Settings.from_env(ROOT, environ={}))

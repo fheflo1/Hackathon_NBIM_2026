@@ -12,7 +12,7 @@ Krever Python 3.11+, Node.js 24 LTS og Ollama med en nedlastet modell.
 ```bash
 python3 run.py --setup
 python3 run.py --init
-ollama pull qwen2.5:7b
+ollama pull qwen3:8b
 python3 run.py
 ```
 

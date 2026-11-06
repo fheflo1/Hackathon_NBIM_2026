@@ -50,13 +50,14 @@ export function AgentView({ info, job }: { info: Bootstrap; job: Job | null }) {
       <div className="page-intro">
         <span className="eyebrow">AGENT-ORKESTRERING</span>
         <h1>
-          Én vurderer.
+          Riktig kontroll
           <br />
-          En annen etterprøver.
+          for hver sak.
         </h1>
         <p>
-          LangGraph holder orden på vurdering, kontroll og nye forsøk. Appen viser fremdriften; all
-          behandling og historikk lagres lokalt.
+          Sakslisten struktureres og prioriteres først. Flaggede saker og eksplisitte policytreff
+          går til full agentkontroll. Andre saker får lett kontroll og eskaleres ved tvil. Flyten
+          under viser fullkontrollen, som LangGraph styrer.
         </p>
       </div>
       <div className="orchestration-banner">
@@ -71,6 +72,9 @@ export function AgentView({ info, job }: { info: Bootstrap; job: Job | null }) {
       <section className="flow-canvas">
         <div className="flow-start">
           <FileSearch size={17} /> Opplastet saksliste <span>PDF / CSV / TXT</span>
+        </div>
+        <div className="triage-queue-note">
+          PRIORITERING → FULL KONTROLL / LETT KONTROLL → FULL KONTROLL VED TVIL
         </div>
         <ArrowDown className="flow-arrow" size={20} />
         <div className="flow-grid">
