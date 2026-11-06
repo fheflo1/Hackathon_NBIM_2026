@@ -1,0 +1,17 @@
+company,company_id,country,market,meeting_id,meeting_date,item_no,proposal_text,proponent,mgmt_rec_raw
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,1,Elect Director Ira Ehrenpreis,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,2,Elect Director Joe Gebbia,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,3,Elect Director Kathleen Wilson-Thompson,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,4,Advisory Vote to Ratify Named Executive Officers' Compensation,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,5,Amend Omnibus Stock Plan,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,6,Approve Issuance of Common Stock to Elon Musk Pursuant to CEO Performance Award,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,7,Ratify PricewaterhouseCoopers LLP as Auditors,Management,For
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,8,Eliminate Supermajority Vote Requirement,Management,
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,9,Authorize Board to Invest Company Funds in xAI,Shareholder,
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,10,Assess Feasibility of Including Sustainability as a Performance Measure for Senior Executive Compensation,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,11,Report on the Use of Child Labor in Connection with Electric Vehicles,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,12,Amend the Bylaws To Repeal 3% Derivative Suit Ownership Threshold,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,13,Amend Bylaws,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,14,Declassify the Board of Directors,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,15,Reduce Supermajority Vote Requirement,Shareholder,Against
+"Tesla, Inc.",601399,United States,DM,1994609,2025-11-06,16,Require Shareholder Approval of Bylaw Amendments Adopted by the Board of Directors,Shareholder,Against
