@@ -95,7 +95,7 @@ python3 run.py --cli triage-holdout   # scorer det låste testsettet 2025–2026
 ```
 
 `run.py --setup` trener triagemodellen automatisk når den mangler. Demosakslister ligger i
-`data/demo/` (to ekte møter fra 2024 og ett fiktivt fra 2025).
+`tests/fixtures/` (testfiler; brukes ikke som data i appen).
 
 ## Kilder og AI-bruk
 

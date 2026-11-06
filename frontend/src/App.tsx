@@ -23,6 +23,7 @@ import { date, finished, labels, number, stages } from './lib/format';
 import { Results } from './components/Results';
 import { DataView } from './components/DataView';
 import { AgentView } from './components/AgentView';
+import { TerminalTape } from './components/TerminalTape';
 import { ModelView } from './components/ModelView';
 import type { TriagedJob } from './model/types';
 
@@ -163,17 +164,17 @@ export function App() {
             <i />
             <i />
           </span>
-          stem<span className="wordmark-period">.</span>
+          stem<span className="wordmark-period"> / NBIM</span>
         </a>
         <div className="workspace-label">
           <span className="workspace-icon">N</span>
           <div>
-            <strong>Voting workspace</strong>
-            <span>Hackathon NBIM 2026</span>
+            <strong>Governance terminal</strong>
+            <span>NBIM / HACKATHON 2026</span>
           </div>
           <span className="workspace-mark">01</span>
         </div>
-        <span className="nav-label">ARBEIDSFLATE</span>
+        <span className="nav-label">NAVIGASJON</span>
         <nav>
           {pages.map((p) => (
             <button
@@ -209,7 +210,7 @@ export function App() {
       <main>
         <header className="topbar">
           <div className="breadcrumb">
-            Workspace<span>/</span>
+            VOTING TERMINAL<span>/</span>
             <strong>{activePage.title}</strong>
           </div>
           <div className="topbar-status">
@@ -218,6 +219,7 @@ export function App() {
             <span className="avatar">NB</span>
           </div>
         </header>
+        <TerminalTape info={info} />
         <div className="main-content">
           <div className="page-kicker">
             <span>
@@ -245,9 +247,9 @@ export function App() {
                 <div>
                   <span className="eyebrow">FRA AGENDA TIL ANBEFALING</span>
                   <h1>
-                    Hver sak.
+                    Saksliste.
                     <br />
-                    Et begrunnet standpunkt<span className="green-period">.</span>
+                    Kontrollert standpunkt<span className="green-period">.</span>
                   </h1>
                   <p>
                     Last opp sakslisten. Agentene vurderer hvert punkt, kontrollerer grunnlaget og
@@ -314,7 +316,7 @@ export function App() {
                   </span>
                 </section>
                 <section className="upload-side">
-                  <span className="eyebrow">TRE STEG. FULL OVERSIKT.</span>
+                  <span className="eyebrow">KONTROLLØP / 01–03</span>
                   <div className="mini-process">
                     <span>
                       <FileText size={16} />

@@ -1,15 +1,55 @@
 """Set up once, then serve React and its local API with one command."""
 
 import argparse
+import errno
 import hashlib
+import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import venv
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import ProxyHandler, build_opener
 
 ROOT = Path(__file__).resolve().parent
+
+
+def app_already_running(port):
+    """Check before building or creating an API service, which can mutate job state."""
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+            return False
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise RuntimeError(f"Kan ikke bruke lokal port {port}: {exc.strerror}.") from exc
+    url = f"http://127.0.0.1:{port}"
+    try:
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(url + "/api/health", timeout=2) as response:
+            health = json.load(response)
+        with opener.open(url + "/openapi.json", timeout=2) as response:
+            schema = json.load(response)
+        if (
+            health.get("status") == "ok"
+            and schema.get("info", {}).get("title") == "STEM · NBIM voting workspace"
+        ):
+            print(f"Appen kjører allerede. Åpne {url}", flush=True)
+            print(
+                "Stopp den eksisterende serveren før du starter på nytt etter kodeendringer.",
+                flush=True,
+            )
+            return True
+    except (OSError, URLError, ValueError, AttributeError):
+        pass
+    raise RuntimeError(
+        f"Port {port} er opptatt av en annen eller utilgjengelig server. "
+        f"Stopp den, eller velg en annen port: python3 run.py --port {port + 1 if port < 65535 else 8765}"
+    )
 
 
 def build_frontend(force=False):
@@ -66,6 +106,18 @@ def main():
         parser.exit(1, "Python 3.11 eller nyere er nødvendig.\n")
     if not 1024 <= args.port <= 65535:
         parser.error("Velg port mellom 1024 og 65535.")
+    launch = not any(
+        (
+            args.setup,
+            args.doctor,
+            args.probe,
+            args.init,
+            args.check,
+            args.cli is not None,
+        )
+    )
+    if launch and app_already_running(args.port):
+        return 0
     os.chdir(ROOT)
     env = ROOT / ".venv"
     python = env / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -89,9 +141,6 @@ def main():
         marker.write_text(digest)
         if args.dev:
             dev_marker.touch()
-    launch = not any(
-        (args.setup, args.doctor, args.probe, args.init, args.check, args.cli is not None)
-    )
     if args.setup or launch:
         build_frontend()
         # Triage model (artifacts/ is not in git): train once from data/real_votes.csv, ~10 s.
@@ -102,7 +151,10 @@ def main():
             print("Trener triagemodellen …", flush=True)
             subprocess.run([str(python), "-m", "nbim_flow", "triage-train"], cwd=ROOT, check=True)
     if args.setup:
-        print("Klart. Kjør python3 run.py for å åpne appen på http://127.0.0.1:8765", flush=True)
+        print(
+            "Klart. Kjør python3 run.py for å åpne appen på http://127.0.0.1:8765",
+            flush=True,
+        )
         return 0
     if args.check:
         command = ["-m", "unittest", "discover", "-s", "tests", "-v"]
