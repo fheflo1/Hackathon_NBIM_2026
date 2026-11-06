@@ -542,6 +542,52 @@ def train(csv_path: str | Path, out_path: str | Path, last_train_year: int = 202
     } | {"validation": report}
 
 
+def _recall_at(y, p, share=0.15):
+    k = max(1, int(round(share * len(y))))
+    top = np.argsort(-np.asarray(p), kind="stable")[:k]
+    return float(np.asarray(y)[top].sum() / max(int(np.asarray(y).sum()), 1))
+
+
+def holdout(csv_path: str | Path, bundle: dict, years=(2025, 2026)) -> dict:
+    """Score the locked test years ONCE with a frozen bundle (no refit, thresholds as frozen).
+
+    History features still use only meetings with a strictly earlier date, as in deployment."""
+    from sklearn.metrics import average_precision_score
+
+    df = load_labelled(csv_path)
+    H = compute_history(df, df.y.to_numpy())
+    test = df.year.isin(years).to_numpy()
+    p = _predict(df, H, bundle["prev"], test, bundle)
+    y = df.y.to_numpy()[test]
+    lane_b = person_mask(df)[test]
+    yr = df.year.to_numpy()[test]
+    flag = np.where(lane_b, p >= bundle["thresholds"]["B"], p >= bundle["thresholds"]["A"])
+
+    def block(m):
+        out = _metrics(y[m], flag[m])
+        has = 0 < y[m].sum() < m.sum()
+        out["average_precision"] = float(average_precision_score(y[m], p[m])) if has else None
+        out["recall_at_15pct_review"] = _recall_at(y[m], p[m]) if y[m].sum() else None
+        return out
+
+    everything = np.ones(len(y), bool)
+    trained = df.year <= bundle["trained_through"]
+    rates = df[trained].groupby("proposal_type").y.mean()
+    prior = df[test].proposal_type.map(rates).fillna(df[trained].y.mean()).to_numpy()
+    return {
+        "years": list(years),
+        "trained_through": bundle["trained_through"],
+        "thresholds": bundle["thresholds"],
+        "all": block(everything),
+        "lane_A": block(~lane_b),
+        "lane_B": block(lane_b),
+        "by_year": {str(t): block(yr == t) for t in years},
+        "always_with_board": _metrics(y, np.zeros(len(y), bool)),
+        "type_prior_average_precision": float(average_precision_score(y, prior)),
+        "prevalence": float(y.mean()),
+    }
+
+
 def model_card(bundle: dict) -> dict:
     """JSON-safe summary for the app (no model internals)."""
     coef = bundle["model"].coef_[0]

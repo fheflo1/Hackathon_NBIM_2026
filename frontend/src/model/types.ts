@@ -92,7 +92,26 @@ export interface CurvePoint {
   review_share: number;
 }
 
+export type HoldoutMetrics = Metrics & {
+  average_precision: number | null;
+  recall_at_15pct_review: number | null;
+};
+
+export interface HoldoutReport {
+  years: number[];
+  trained_through: number;
+  thresholds: { A: number; B: number };
+  all: HoldoutMetrics;
+  lane_A: HoldoutMetrics;
+  lane_B: HoldoutMetrics;
+  by_year: Record<string, HoldoutMetrics>;
+  always_with_board: Metrics;
+  type_prior_average_precision: number;
+  prevalence: number;
+}
+
 export interface ModelCard {
+  holdout?: { frozen: HoldoutReport; retrained_2024: HoldoutReport; protocol: string };
   available: boolean;
   detail?: string;
   version: string;

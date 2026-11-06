@@ -37,6 +37,10 @@ def parser_for_cli():
     )
     triage.add_argument("--last-train-year", type=int, default=2023)
     triage.add_argument("--out", type=Path)
+    commands.add_parser(
+        "triage-holdout",
+        help="Evaluer den frosne triagemodellen én gang på det låste testsettet 2025-2026",
+    )
     for name in ("prepare", "train", "process", "evaluate"):
         command = commands.add_parser(name)
         command.add_argument("--source", choices=("real", "npx", "upload"), default="real")
@@ -110,6 +114,29 @@ def main(argv=None):
             emit(
                 train(settings.root / "data/real_votes.csv", out, args.last_train_year)
                 | {"path": str(out)}
+            )
+        elif args.command == "triage-holdout":
+            import joblib
+
+            from .triage import holdout, train
+
+            csv = settings.root / "data/real_votes.csv"
+            frozen_path = settings.triage_model_path
+            if not frozen_path.exists():
+                train(csv, frozen_path, 2023)
+            frozen = joblib.load(frozen_path)  # trained 2019-2023, thresholds chosen on 2023
+            retrained_path = frozen_path.with_name("triage_model_2024.joblib")
+            train(csv, retrained_path, 2024)  # declared variant: same recipe, 2019-2024
+            report = {
+                "frozen": holdout(csv, frozen),
+                "retrained_2024": holdout(csv, joblib.load(retrained_path)),
+                "protocol": "Frozen model as validated on 2024; one scoring of 2025-2026; "
+                "no refit or threshold change after scoring.",
+            }
+            out = frozen_path.with_name("holdout_report.json")
+            out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            emit(
+                {k: v["all"] for k, v in report.items() if isinstance(v, dict)} | {"path": str(out)}
             )
         elif args.command == "activate-model":
             from .registry import activate_run

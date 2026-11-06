@@ -414,7 +414,12 @@ class AgendaService:
                 "available": False,
                 "detail": "Triagemodellen er ikke trent. Kjør python run.py --cli triage-train.",
             }
-        return dict(model.card(), available=True, light_workers=self.settings.light_workers)
+        card = dict(model.card(), available=True, light_workers=self.settings.light_workers)
+        # Locked-test result, written once by `python -m nbim_flow triage-holdout`.
+        report = self.settings.triage_model_path.with_name("holdout_report.json")
+        if report.exists():
+            card["holdout"] = json.loads(report.read_text(encoding="utf-8"))
+        return card
 
     def _event(self, job_id, event, payload):
         with self.connection() as db:

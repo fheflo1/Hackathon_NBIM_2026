@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { number } from '../lib/format';
-import type { CurvePoint, Metrics, ModelCard } from '../model/types';
+import type { CurvePoint, HoldoutMetrics, Metrics, ModelCard } from '../model/types';
 import { pct } from '../model/types';
 import '../model/model.css';
 
@@ -86,6 +86,97 @@ function Row({ name, m, ap }: { name: string; m: Metrics; ap?: number }) {
       <td>{m.flagged ? m.f1.toFixed(2) : '—'}</td>
       <td>{ap == null ? '—' : ap.toFixed(2)}</td>
     </tr>
+  );
+}
+
+function HoldoutRow({ name, m }: { name: string; m: HoldoutMetrics }) {
+  return (
+    <tr>
+      <td>{name}</td>
+      <td>{number(m.items)}</td>
+      <td>{number(m.against)}</td>
+      <td>{pct(m.precision)}</td>
+      <td>{pct(m.recall)}</td>
+      <td>{m.f1.toFixed(2)}</td>
+      <td>{m.average_precision == null ? '—' : m.average_precision.toFixed(2)}</td>
+      <td>{m.recall_at_15pct_review == null ? '—' : pct(m.recall_at_15pct_review)}</td>
+    </tr>
+  );
+}
+
+function Holdout({ h }: { h: NonNullable<ModelCard['holdout']> }) {
+  const f = h.frozen;
+  const r = h.retrained_2024;
+  return (
+    <section className="panel lane-panel holdout-panel">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">
+            <Lock size={12} /> LÅST TESTSETT {f.years.join('–')} · SCORET ÉN GANG
+          </span>
+          <h2>Fasiten modellen aldri har sett.</h2>
+        </div>
+      </div>
+      <div className="data-metrics">
+        <div>
+          <span>Average precision</span>
+          <strong>{f.all.average_precision?.toFixed(2)}</strong>
+          <small>
+            tilfeldig {f.prevalence.toFixed(2)} · sakstype{' '}
+            {f.type_prior_average_precision.toFixed(2)}
+          </small>
+        </div>
+        <div>
+          <span>Presisjon</span>
+          <strong>{pct(f.all.precision)}</strong>
+          <small>
+            {f.all.tp} av {f.all.flagged} flaggede var mot-stemmer
+          </small>
+        </div>
+        <div>
+          <span>Recall</span>
+          <strong>{pct(f.all.recall)}</strong>
+          <small>
+            {f.all.tp} av {f.all.against} mot-stemmer funnet
+          </small>
+        </div>
+        <div>
+          <span>Topp 15 % av sakene</span>
+          <strong>{pct(f.all.recall_at_15pct_review || 0)}</strong>
+          <small>av mot-stemmene fanges</small>
+        </div>
+      </div>
+      <div className="table-scroll">
+        <table className="lane-table">
+          <thead>
+            <tr>
+              <th>Modell / utvalg</th>
+              <th>Saker</th>
+              <th>Mot-stemmer</th>
+              <th>Presisjon</th>
+              <th>Recall</th>
+              <th>F1</th>
+              <th>Avg. precision</th>
+              <th>Fanget i topp 15 %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <HoldoutRow name={`Frosset (trent ≤ ${f.trained_through}), samlet`} m={f.all} />
+            <HoldoutRow name="· saker uten person" m={f.lane_A} />
+            <HoldoutRow name="· personsaker" m={f.lane_B} />
+            {Object.entries(f.by_year).map(([y, m]) => (
+              <HoldoutRow key={y} name={`· ${y}`} m={m} />
+            ))}
+            <HoldoutRow name={`Trent på nytt ≤ ${r.trained_through} (driftsversjon)`} m={r.all} />
+          </tbody>
+        </table>
+      </div>
+      <p className="footnote">
+        {h.protocol} Valideringstallet for {f.trained_through + 1} var høyere (0,56); det rullerende
+        estimatet over 2021–2023 (0,48) traff testresultatet. Alltid følg styret:{' '}
+        {pct(f.always_with_board.accuracy)} accuracy, 0 mot-stemmer funnet.
+      </p>
+    </section>
   );
 }
 
@@ -167,6 +258,8 @@ export function ModelView() {
           <small>accuracy, men 0 mot-stemmer funnet</small>
         </div>
       </div>
+
+      {card.holdout && <Holdout h={card.holdout} />}
 
       <section className="panel slider-card">
         <div className="section-heading">
@@ -298,8 +391,8 @@ export function ModelView() {
           </span>
           <ul className="control-list">
             <li>
-              Tidsdelt: trent ≤ {card.trained_through}, validert på {v.year}. 2025–2026 er låst
-              testsett.
+              Tidsdelt: trent ≤ {card.trained_through}, validert på {v.year}. 2025–2026 var låst til
+              modellen ble frosset, og er scoret én gang.
             </li>
             <li>
               Historikk bruker bare møter med tidligere dato; testet ved å snu alle senere
