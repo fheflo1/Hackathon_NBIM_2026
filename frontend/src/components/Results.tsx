@@ -9,9 +9,11 @@ import {
   FileText,
   Fingerprint,
   ShieldCheck,
+  UserCheck,
   X,
 } from 'lucide-react';
 import type { Item, Job } from '../lib/types';
+import { api } from '../lib/api';
 import { confidence, date, number, tally } from '../lib/format';
 import { RiskCell, TriagePanel } from './TriagePanel';
 import { triaged } from '../model/types';
@@ -33,7 +35,7 @@ export function VoteBadge({ item }: { item: Item }) {
   );
 }
 
-export function Results({ job }: { job: Job }) {
+export function Results({ job, onJob }: { job: Job; onJob?: (job: Job) => void }) {
   const [filter, setFilter] = useState('Alle');
   const [selected, setSelected] = useState<string | null>(null);
   const closeDetail = useCallback(() => setSelected(null), []);
@@ -43,7 +45,8 @@ export function Results({ job }: { job: Job }) {
       filter === 'Alle' ||
       (filter === 'Manuell'
         ? i.result?.needs_human_review
-        : i.result?.status === 'verified' && i.result.vote === filter),
+        : (i.result?.status === 'verified' || i.result?.status === 'human') &&
+          i.result.vote === filter),
   );
   const selectedItem = job.items.find((i) => i.record_id === selected);
   return (
@@ -180,12 +183,116 @@ export function Results({ job }: { job: Job }) {
           {items.length === 0 && <p className="empty-filter">Ingen saker i dette utvalget.</p>}
         </div>
       </div>
-      {selectedItem && <Detail item={selectedItem} onClose={closeDetail} />}
+      {selectedItem && (
+        <Detail
+          item={selectedItem}
+          onClose={closeDetail}
+          decision={
+            FINISHED.includes(job.status)
+              ? { jobId: job.id, index: job.items.indexOf(selectedItem), onJob }
+              : undefined
+          }
+        />
+      )}
     </section>
   );
 }
 
-function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
+const FINISHED = ['completed', 'needs_attention', 'failed'];
+const VOTE_LABEL: Record<string, string> = { FOR: 'For', MOT: 'Mot', AVSTÅ: 'Avstå' };
+
+interface HumanVote {
+  vote: string;
+  note: string;
+  decided_at: string;
+  agent_vote?: string;
+}
+
+interface DecisionTarget {
+  jobId: string;
+  index: number;
+  onJob?: (job: Job) => void;
+}
+
+/** The reviewer's own vote. It closes a manual case and is written to the job's event log. */
+function HumanDecision({ item, target }: { item: Item; target: DecisionTarget }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const r = item.result;
+  if (!r) return null;
+  const human = (r as typeof r & { human_decision?: HumanVote }).human_decision;
+  const decide = async (vote: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api<{ job: Job }>(`/jobs/${target.jobId}/items/${target.index}/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vote, note }),
+      });
+      setNote('');
+      target.onJob?.(res.job);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kunne ikke lagre vedtaket.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="detail-block human-decision">
+      <h3>
+        <UserCheck size={17} /> Ditt vedtak
+      </h3>
+      {human ? (
+        <p>
+          Du valgte <strong>{VOTE_LABEL[human.vote] || human.vote}</strong>. Agentens forslag var{' '}
+          {r.needs_human_review || human.agent_vote === undefined
+            ? 'manuell vurdering'
+            : VOTE_LABEL[human.agent_vote] || human.agent_vote}
+          {human.note ? ` · «${human.note}»` : ''}. Du kan endre valget.
+        </p>
+      ) : (
+        <p className="muted small">
+          {r.needs_human_review
+            ? 'Saken trenger en menneskelig vurdering. Velg stemme for å lukke den.'
+            : 'Du kan overstyre forslaget. Valget lagres i behandlingsloggen.'}
+        </p>
+      )}
+      <textarea
+        className="human-note"
+        rows={2}
+        maxLength={500}
+        placeholder="Kort begrunnelse (valgfritt)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="human-actions">
+        {['FOR', 'MOT', 'AVSTÅ'].map((v) => (
+          <button
+            key={v}
+            className={'button secondary compact' + (human?.vote === v ? ' active' : '')}
+            disabled={busy}
+            onClick={() => decide(v)}
+          >
+            {VOTE_LABEL[v]}
+          </button>
+        ))}
+      </div>
+      {error && <p className="soft-note">{error}</p>}
+    </section>
+  );
+}
+
+function Detail({
+  item,
+  onClose,
+  decision,
+}: {
+  item: Item;
+  onClose: () => void;
+  decision?: DecisionTarget;
+}) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -252,6 +359,7 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
               <small>ikke en målt treffsikkerhet</small>
             </div>
           </div>
+          {decision && <HumanDecision item={item} target={decision} />}
           <TriagePanel item={item} />
           <section className="detail-block">
             <h3>Begrunnelse</h3>

@@ -38,7 +38,7 @@ export function tally(items: Item[]) {
     const r = item.result;
     if (!r) counts.pending += 1;
     else if (r.needs_human_review) counts.manual += 1;
-    else if (r.status === 'verified') counts[r.vote] += 1;
+    else if (r.status === 'verified' || r.status === 'human') counts[r.vote] += 1;
   }
   return counts;
 }

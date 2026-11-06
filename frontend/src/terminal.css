@@ -1130,3 +1130,25 @@ small {
   color: var(--muted);
   margin-bottom: 24px;
 }
+
+/* Reviewer's own vote in the case drawer */
+.human-decision .human-note {
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  opacity: 0.9;
+  resize: vertical;
+}
+.human-decision .human-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.human-decision .button.active {
+  outline: 2px solid currentColor;
+}

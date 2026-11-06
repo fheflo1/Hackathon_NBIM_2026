@@ -447,7 +447,16 @@ export function App() {
                       </div>
                     </div>
                   )}
-                  {job.items.length > 0 && <Results key={job.id} job={job} />}
+                  {job.items.length > 0 && (
+                    <Results
+                      key={job.id}
+                      job={job}
+                      onJob={(next) => {
+                        setJob(next);
+                        refreshJobs().catch(() => {});
+                      }}
+                    />
+                  )}
                   {job.done > 0 && (
                     <div className="run-footer">
                       <span>

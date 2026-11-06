@@ -25,6 +25,7 @@ from .ingestion import MAX_BYTES, read_agenda
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"completed", "needs_attention", "failed"}
+HUMAN_VOTES = {"FOR", "MOT", "AVSTÅ"}
 LIGHT_VERSION = "light-check-v6"  # bump when prompts change: re-uploads re-run
 NBIM_VOTING_URL = "https://www.nbim.no/en/responsible-investment/voting/our-voting-records/"
 
@@ -187,6 +188,50 @@ class AgendaService:
                     else "recommend"
                 )
         return job
+
+    def decide(self, job_id, index, vote, note=""):
+        """Record a reviewer's own vote on one item of a finished job, kept beside the agent's result."""
+        vote = str(vote or "").strip().upper()
+        if vote not in HUMAN_VOTES:
+            raise ValueError("Velg For, Mot eller Avstå.")
+        note = str(note or "").strip()[:500]
+        with self.lock:
+            job = self.get(job_id)
+            if job["status"] not in TERMINAL:
+                raise ValueError("Sakslisten behandles fortsatt. Vent til den er ferdig.")
+            items = job.get("items") or []
+            if not 0 <= index < len(items) or not items[index].get("result"):
+                raise ValueError("Saken finnes ikke eller har ikke noe resultat ennå.")
+            result = items[index]["result"]
+            previous = result.get("human_decision") or {
+                "agent_vote": result.get("vote"),
+                "agent_status": result.get("status"),
+                "agent_needs_human_review": bool(result.get("needs_human_review")),
+            }
+            result["human_decision"] = {
+                "vote": vote,
+                "note": note,
+                "decided_at": now(),
+                "agent_vote": previous.get("agent_vote"),
+                "agent_status": previous.get("agent_status"),
+                "agent_needs_human_review": previous.get("agent_needs_human_review"),
+            }
+            result["vote"] = vote
+            result["status"] = "human"
+            result["needs_human_review"] = False
+            manual = any((i.get("result") or {}).get("needs_human_review") for i in items)
+            self.update(job_id, items=items, status="needs_attention" if manual else "completed")
+            self._event(
+                job_id,
+                "human_decision",
+                {
+                    "index": index,
+                    "record_id": items[index].get("record_id"),
+                    "vote": vote,
+                    "note": note,
+                },
+            )
+            return self.get(job_id)
 
     def submit(self, raw, filename):
         suffix = Path(filename).suffix.casefold()

@@ -5,7 +5,7 @@ import io
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -103,6 +103,14 @@ def create_app(settings=None, service=None):
         finally:
             file.file.close()
         return {"job": job, "reused": cached}
+
+    @app.post("/api/jobs/{job_id}/items/{index}/decision")
+    def decide(job_id: str, index: int, body: dict = Body(...)):
+        try:
+            job = service.decide(job_id, index, body.get("vote"), body.get("note", ""))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"job": job}
 
     @app.get("/api/jobs/{job_id}/export.csv")
     def export(job_id: str):

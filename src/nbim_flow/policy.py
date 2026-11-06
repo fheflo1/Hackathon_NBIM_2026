@@ -73,5 +73,11 @@ def injection_signals(text):
         r"ignorer\s+(?:alle\s+)?(?:tidligere\s+)?(?:instruksjoner|retningslinj|regler)",
         r"(?:system|assistant|developer)\s*:",
         r"<\|(?:im_start|system)",
+        r"disregard\s+(?:\S+\s+){0,3}(?:policy|instructions|guidelines|rules)",
+        r"(?:note|message|instruction)s?\s+(?:to|for)\s+(?:the\s+)?(?:ai|llm|model|assistant|agent|reviewer)",
+        r"output\s+(?:exactly|only)|respond\s+(?:exactly|only)\s+with",
+        r"\{\s*\"?(?:decision|vote|confidence)\"?\s*:",
+        r"developer\s+mode|jailbreak",
+        r"(?:you\s+(?:must|should)\s+(?:always\s+)?(?:vote|recommend|approve|answer))",
     ]
     return [p for p in patterns if re.search(p, text, re.IGNORECASE)]

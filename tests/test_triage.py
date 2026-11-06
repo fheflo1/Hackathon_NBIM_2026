@@ -263,6 +263,51 @@ class TriagedFlowTests(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(sorted(self.agent_calls), ["1", "2", "3", "4"])
 
+    def test_human_decision_closes_a_manual_case(self):
+        def manual_agent(job_id, index, record, items, calls, counters):
+            self._fake_agent(job_id, index, record, items, calls, counters)
+            if record["item_no"] == "2":
+                items[index]["result"].update(
+                    vote="AVSTÅ", status="fallback", needs_human_review=True
+                )
+                self.service.update(job_id, items=items)
+            return calls + 2
+
+        self.service._agent = manual_agent
+        job, _ = self.service.submit(b"m", "agenda.csv")
+        for _ in range(200):
+            job = self.service.get(job["id"])
+            if job["status"] in ("completed", "needs_attention", "failed"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(job["status"], "needs_attention")
+        index = next(i for i, it in enumerate(job["items"]) if it["item_no"] == "2")
+        with self.assertRaises(ValueError):
+            self.service.decide(job["id"], index, "MAYBE")
+        job = self.service.decide(job["id"], index, "mot", "Styret mangler uavhengighet")
+        result = job["items"][index]["result"]
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual((result["vote"], result["status"]), ("MOT", "human"))
+        self.assertFalse(result["needs_human_review"])
+        self.assertTrue(result["human_decision"]["agent_needs_human_review"])
+        self.assertEqual(result["human_decision"]["note"], "Styret mangler uavhengighet")
+        # changing one's mind keeps the agent's original suggestion
+        job = self.service.decide(job["id"], index, "FOR")
+        self.assertEqual(job["items"][index]["result"]["human_decision"]["agent_vote"], "AVSTÅ")
+
+
+class InjectionPatternTests(unittest.TestCase):
+    def test_every_injection_in_the_stress_agenda_is_caught_and_clean_items_are_not(self):
+        import csv
+
+        from nbim_flow.policy import injection_signals
+
+        path = ROOT / "tests/fixtures/agenda_2025_injection_stress_test.csv"
+        with path.open(encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        caught = [r["item_no"] for r in rows if injection_signals(r["proposal_text"])]
+        self.assertEqual(caught, ["1", "3", "4", "5", "6", "7", "8", "9"])
+
 
 if __name__ == "__main__":
     unittest.main()
