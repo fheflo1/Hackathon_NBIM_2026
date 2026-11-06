@@ -17,8 +17,8 @@ class CLITests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "data").mkdir()
-        (self.root / "data/demo_agenda.csv").write_bytes(
-            (ROOT / "data/demo_agenda.csv").read_bytes()
+        (self.root / "data/agenda.csv").write_bytes(
+            (ROOT / "tests/fixtures/agenda.csv").read_bytes()
         )
         self.settings = Settings(
             root=self.root, model="test-local:7b", policy_file=str(ROOT / "policies/nbim_2025.json")
@@ -40,12 +40,20 @@ class CLITests(unittest.TestCase):
 
     def test_offline_doctor_and_demo_process_evaluation_backup(self):
         self.assertEqual(self.call(["doctor"])[0], 0)
-        args = ["process", "--source", "upload", "--input", "data/demo_agenda.csv"]
+        args = [
+            "process",
+            "--source",
+            "upload",
+            "--input",
+            "data/agenda.csv",
+            "--mode",
+            "demo",
+        ]
         code, report = self.call(args)
         self.assertEqual((code, report["processed"]), (0, 4))
         self.assertEqual(self.call(args)[1]["skipped"], 4)
         code, evaluation = self.call(
-            ["evaluate", "--source", "upload", "--input", "data/demo_agenda.csv", "--mode", "demo"]
+            ["evaluate", "--source", "upload", "--input", "data/agenda.csv", "--mode", "demo"]
         )
         self.assertEqual(
             (code, evaluation["processed_count"], evaluation["known_label_evaluated_count"]),
@@ -76,7 +84,7 @@ class CLITests(unittest.TestCase):
             return_value={"errors": 1, "stopped_reason": "authentication"},
         ):
             self.assertEqual(
-                self.call(["process", "--source", "upload", "--input", "data/demo_agenda.csv"])[0],
+                self.call(["process", "--source", "upload", "--input", "data/agenda.csv"])[0],
                 2,
             )
 

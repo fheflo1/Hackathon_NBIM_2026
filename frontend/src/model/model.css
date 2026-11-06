@@ -1,0 +1,291 @@
+/* Triage model views. Uses the palette in styles.css (:root). */
+.risk-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 74px;
+}
+.risk-bar {
+  position: relative;
+  display: block;
+  width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background: #eef1e8;
+}
+.risk-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #afc39a;
+}
+.risk-bar i.hot {
+  background: #c98f72;
+}
+.risk-bar b {
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 10px;
+  background: #8b947f;
+}
+.risk-chip {
+  display: inline-flex;
+  width: fit-content;
+  font-size: 8px;
+  letter-spacing: 0.2px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  background: #f2f4ee;
+  color: #8f9984;
+}
+.risk-chip.flagged {
+  background: #f6e9e3;
+  color: #a2694f;
+}
+.risk-chip.escalated {
+  background: #f5f0e3;
+  color: #9d8546;
+}
+.risk-chip.light {
+  background: #edf3e5;
+  color: #66874b;
+}
+.triage-block .triage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 16px;
+}
+.triage-head strong {
+  display: block;
+  font-family: Manrope;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -1px;
+  margin: 6px 0;
+  color: var(--green);
+}
+.triage-head strong.hot {
+  color: #a2694f;
+}
+.triage-head small,
+.triage-foot {
+  font-size: 9px;
+  color: #9aa38e;
+  line-height: 1.6;
+}
+.triage-route {
+  font-size: 11px;
+  color: #6f7a66;
+  margin-top: 12px;
+  line-height: 1.7;
+}
+.reason-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+.reason {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 7px;
+  color: #6f7a66;
+}
+.reason.up svg {
+  color: #b5785c;
+  flex: none;
+}
+.reason.down svg {
+  color: #6f9558;
+  flex: none;
+}
+.model-note,
+.precedent {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fbfcf8;
+}
+.model-note .eyebrow,
+.precedent .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.model-note p,
+.precedent p {
+  font-size: 11px;
+  color: #6f7a66;
+  line-height: 1.7;
+  margin-top: 7px;
+}
+.precedent p .policy-chip,
+.precedent p .risk-chip {
+  margin-left: 6px;
+}
+.triage-foot {
+  display: block;
+  margin-top: 12px;
+}
+.slider-card,
+.lane-panel,
+.catalogue-panel {
+  margin-bottom: 22px;
+}
+.threshold-slider {
+  width: 100%;
+  accent-color: var(--green);
+  margin-top: 8px;
+}
+.slider-scale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  color: #9aa38e;
+  margin-top: 4px;
+}
+.slider-readout {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.slider-readout span {
+  font-size: 10px;
+  color: #929c86;
+  display: block;
+}
+.slider-readout strong {
+  display: block;
+  font-family: Manrope;
+  font-size: 26px;
+  font-weight: 500;
+  margin: 6px 0 3px;
+}
+.slider-readout strong.recall,
+.curve .recall {
+  color: #386449;
+  stroke: #386449;
+}
+.slider-readout strong.precision,
+.curve .precision {
+  color: #b5785c;
+  stroke: #b5785c;
+}
+.slider-readout small {
+  font-size: 9px;
+  color: #a0a892;
+}
+.curve {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  display: block;
+  margin-top: 6px;
+}
+.curve path {
+  fill: none;
+  stroke-width: 2;
+}
+.curve circle {
+  fill: #fff;
+  stroke-width: 2;
+}
+.curve .axis {
+  stroke: #cfd6c6;
+}
+.curve .grid {
+  stroke: #eef1e8;
+}
+.curve .default {
+  stroke: #9aa38e;
+  stroke-dasharray: 3 3;
+}
+.curve text {
+  font-size: 9px;
+  fill: #9aa38e;
+}
+.lane-table {
+  width: 100%;
+  font-size: 11px;
+}
+.lane-table td,
+.lane-table th {
+  padding: 9px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+.lane-table td:first-child,
+.lane-table th:first-child {
+  text-align: left;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.signal {
+  margin-top: 11px;
+  font-size: 11px;
+  color: #6f7a66;
+}
+.signal i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: #c98f72;
+  margin-top: 5px;
+}
+.control-list {
+  margin: 10px 0 0 16px;
+  font-size: 11px;
+  color: #6f7a66;
+  line-height: 1.9;
+}
+.sha {
+  display: block;
+  margin-top: 12px;
+  font-size: 9px;
+  color: #9aa38e;
+}
+.catalogue-panel details {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  font-size: 11px;
+}
+.catalogue-panel details:first-of-type {
+  margin-top: 10px;
+}
+.catalogue-panel summary {
+  cursor: pointer;
+  color: #6f7a66;
+}
+.catalogue-panel details p {
+  margin-top: 8px;
+  color: #87927b;
+  line-height: 1.8;
+}
+@media (max-width: 760px) {
+  .reason-columns,
+  .model-grid,
+  .slider-readout {
+    grid-template-columns: 1fr 1fr;
+  }
+  .model-grid {
+    grid-template-columns: 1fr;
+  }
+}

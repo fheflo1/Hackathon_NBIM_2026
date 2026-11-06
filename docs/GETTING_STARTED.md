@@ -1,144 +1,110 @@
-# Kjør med en lokal modell
+# Stegvis oppstart med lokal modell
 
-To ulike modeller har ulike oppgaver:
+## 1. Klargjør maskinen
 
-- **LLM-en** leser saken, foreslår For/Mot/Avstå og gir en kildebelagt begrunnelse.
-  Et separat kall kontrollerer svaret. Det er dette Ollama, Qwen eller Gemma brukes til.
-- **Den logistiske modellen** prioriterer køen. Den er valgfri og trenger ingen LLM-server.
+Installer Python 3.11 eller nyere, Node.js 24 LTS og [Ollama](https://ollama.com/download).
+Start Ollama-appen. En allerede kjørende Ollama-server skal ikke startes på nytt.
 
-## 1. Installer prosjektet
+```bash
+ollama list
+```
 
-Åpne en terminal i `Hackathon_NBIM_2026`:
+Bruk en installert modell, eller last ned Qwen:
+
+```bash
+ollama pull qwen3:8b
+```
+
+Nedlasting og nok arbeidsminne kreves før første lokale kjøring. Ytelsen avhenger av
+maskin, kontekst og modell. Appen laster ikke ned modeller eller bytter til skyen ved feil.
+
+## 2. Installer og bygg prosjektet
+
+Stå i `Hackathon_NBIM_2026`:
 
 ```bash
 python3 run.py --setup
 python3 run.py --init
 ```
 
-Oppsettet lager `.venv` og installerer pakken fra `src`. `--init` lager en lokal
-`.env` uten å overskrive en eksisterende fil. På Windows: bruk `py` i stedet for
-`python3`; det lokale Python-programmet heter `.venv\Scripts\python.exe`.
+Dette lager Python-miljøet, installerer pakken fra `src`, installerer React-biblioteker
+fra låsfilen og bygger brukerflaten. `--init` lager `.env` bare hvis filen mangler.
+På Windows brukes `py` i stedet for `python3`.
 
-## 2. Start Ollama
+## 3. Kontroller modellnavnet
 
-Installer ved behov fra [ollama.com](https://ollama.com/download). Start Ollama-appen,
-eller kjør `ollama serve` i en egen terminal. Hvis appen allerede kjører, skal du
-ikke starte en ekstra server på samme port.
-
-```bash
-ollama list
-```
-
-Hvis en egnet modell allerede finnes, kan den brukes direkte. På denne maskinen
-fantes `gemma4:e4b`. Første reelle prøve med denne modellen leverte strukturerte svar
-fra begge agentrollene. Dette dokumenterer tilkoblingen, ikke generell stemmekvalitet.
-
-For Qwen-alternativet:
-
-```bash
-ollama pull qwen2.5:7b
-```
-
-Den standardkvantiserte modellen er omtrent 4,7 GB å laste ned. Modellfilen krever
-i tillegg arbeidsminne og kontekstbuffer ved kjøring. Faktisk hastighet avhenger
-av maskinen og tekstlengden. Se [modellkortet](https://ollama.com/library/qwen2.5:7b).
-
-Ingen modell lastes automatisk ned av prosjektkoden.
-
-## 3. Velg modell i .env
-
-Bruk nøyaktig navnet fra `ollama list`. For den allerede installerte modellen:
+I `.env` må `LLM_MODEL` samsvare med `ollama list`:
 
 ```dotenv
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://127.0.0.1:11434
-LLM_MODEL=gemma4:e4b
-LLM_REVIEWER_MODEL=
+LLM_MODEL=qwen3:8b
+LLM_REVIEWER_MODEL=qwen3:8b
 ```
 
-Etter nedlasting av Qwen kan `LLM_MODEL` endres til `qwen2.5:7b`.
-Tom `LLM_REVIEWER_MODEL` bruker samme modell i et separat kall.
-Anbefalings- og kontrollmodellen kjører sekvensielt.
-
-Lokal modus trenger ingen API-nøkkel. Koden bruker Ollamas native `/api/chat`
-med JSON-schema. Modusvalget tillater bare lokal server og blokkerer eksplisitte
-cloud-modellnavn. Kjøring har ingen automatisk reserveleverandør i skyen.
-Oppstart av Ollama og nedlasting av modell er de eneste eksterne forberedelsene.
-
-Start med innstillingene fra `.env.example`. `NBIM_API_TIMEOUT=120` gir tid til
-første lasting. `NBIM_MAX_OUTPUT_TOKENS=1500` begrenser hvert svar, og
-`NBIM_CONTEXT_TOKENS=16384` setter kontekstvinduet. Ved endring av `.env` må
-terminalmiljøvariabler som overstyrer samme navn fjernes eller endres; de har prioritet.
-
-## 4. Kontroller oppsett og tilkobling
+Begge agentroller bruker Qwen3 8B i separate kall. Tom kontrollmodell bruker vurderingsmodellen.
+Klienten slår av thinking for Qwen3 slik at JSON-svar får hele utbudsjettet. API-nøkkel er ikke nødvendig.
+Driftsgrenser står i `.env.example`. De stilles av prosjektansvarlig, ikke i brukerflaten.
+Terminalens miljøvariabler har prioritet over `.env`. Start appen på nytt etter endringer.
 
 ```bash
 python3 run.py --doctor
 python3 run.py --cli models
-python3 run.py --probe
 ```
 
-- `doctor` er lokal oppsettskontroll uten nettverk eller modellkall.
-- `models` kontakter lokal Ollama og viser installerte navn og modellversjoner.
-- `probe` gjør to faktiske modellkall på et syntetisk forslag om å skille CEO og styreleder.
+`doctor` krever ingen modelltilgang; `models` henter lokal modellmetadata uten inferens.
 
-I probe-resultatet skal `connected` og `structured_outputs_ok` være `true`.
-Kontrollagenten kan fortsatt avvise anbefalingen. Det betyr at transporten fungerer,
-men at selve vurderingen krever oppfølging. En probe er ikke en evaluering av modellkvalitet.
-
-## 5. Start dashboardet
+## 4. Start appen
 
 ```bash
 python3 run.py
 ```
 
-Følg sidene i denne rekkefølgen:
+Åpne **http://127.0.0.1:8765**. Last opp sakslisten i Saksbehandling.
+Behandlingen starter automatisk. Åpne en resultatlinje for å se stemme, konfidens,
+retningslinje, originalt saksgrunnlag og kontrollagentens begrunnelse.
 
-1. **Oppsett:** kontroller modellnavn og prøv et syntetisk eksempel.
-2. **Data:** velg Demoeksempler for en første gjennomkjøring, deretter NBIM-data.
-3. **Saksbehandling:** velg «LLM med konfigurert modell» og start med én til fem nye saker.
-4. **Drift:** se batchstatus, kall, tokens og stoppårsaker.
-5. **Manuell oppfølging:** åpne usikre saker og registrer vurdering med navn og begrunnelse.
-6. **Workflow:** se diagrammet eller last ned Mermaid-kilden.
+Ingen demodata er inkludert i appen. Datagrunnlag viser bare de originale NBIM- og
+N-PX-filene, hver for seg. Tidligere opplastinger viser bare faktiske opplastinger.
 
-Ved første kjøring lastes modellen inn i minnet. Det kan ta vesentlig lengre tid
-enn senere kall. Ikke start mange samtidige batcher på samme lokale modellserver.
+## Filformat
 
-## 6. Kjør en liten ekte batch fra terminalen
+- **PDF:** tekstbasert, ulåst, maks 40 sider og 24 000 teksttegn. Last opp sidene med
+  selskap, møtedato og hele sakslisten. Skannede dokumenter trenger tekstgjenkjenning først.
+- **TXT:** UTF-8 med selskap, faktisk møtedato og tydelig nummererte forslag.
+- **CSV:** UTF-8 eller UTF-16; komma, semikolon eller tabulator. Minstekolonner er
+  `meeting_date` og `proposal_text`; bruk også `company`, `meeting_id` og `item_no`.
+  Norske navn som `selskap`, `møtedato`, `saksnummer`, `sak` godtas.
+
+Maks 20 MB og 100 agendapunkter per fil. Ta med opplysninger som er nødvendige for
+å vurdere forslaget, ikke bare en generell overskrift. Manglende dato gjettes ikke.
+CSV valideres direkte; PDF/TXT bruker ett uttrekkskall før agentløpet. Uttrekkets
+selskapsnavn, dato og sitater bindes til dokumentteksten. Dette garanterer ikke at
+modellen har funnet alle punkter; kontroller listen mot originaldokumentet.
+
+Mangelfulle eller motstridende punkter avviser hele innlesingen før stemmevurdering.
+Historiske stemmer og begrunnelser i en CSV holdes utenfor agentenes saksfakta.
+
+## Hvis en sak trenger oppfølging
+
+Policyutvalget dekker et begrenset datovindu i 2025. For andre år eller utilstrekkelig
+saksgrunnlag får saken status Manuell vurdering, uten oppdiktet konfidens eller sitater.
+Reservevalget Avstå er ikke en godkjent anbefaling og holdes utenfor stemmetallene.
+
+Lokal inferens kan ta minutter per punkt. Serveren behandler én saksliste om gangen.
+Ved modellfeil stopper kjøringen og bevarer ferdige resultater. Rett årsaken og last
+opp igjen. Ved et serverkrasj kan en låst sak kreve opptil ti minutter før den kan overtas.
+
+## Utvikling
+
+Start API-et med `python3 run.py`. For rask React-utvikling i en annen terminal:
 
 ```bash
-python3 run.py --cli process --source real --year 2025 --mode llm --limit 5 --max-api-calls 20
-python3 run.py --cli status --mode llm
-python3 run.py --cli evaluate --source real --mode llm
+npm --prefix frontend run dev
 ```
 
-Alle agendapunkter beholdes. Saker utenfor policyutvalget rutes til mennesker uten
-modellkall. Generiske valg- og revisorsaker trenger ofte flere selskapsopplysninger.
-Evalueringen oppgir både dekning og utfall; fem valgte saker er ikke en holdout-test.
+Vite på port 5173 videresender API-kall til port 8765. Produksjonskjøring bruker bare
+én lokal server og krever ingen Vite-prosess. Nytt frontendbygg lages automatisk
+ved endret frontendkode når `run.py` startes.
 
-Vil du prioritere køen først:
-
-```bash
-python3 run.py --cli train --source real
-python3 run.py --cli process --source real --year 2025 --mode llm --limit 5 --priority-model artifacts/model
-```
-
-Modellen estimerer foreløpig MOT-stemme, ikke nødvendigvis avvik fra styret.
-Dette er en annen målvariabel enn DeBERTa-rapportens `against_board`.
-
-## Valgfritt: OpenAI i stedet for egen modell
-
-Sett følgende lokalt i `.env`, og velg et modellnavn kontoen har tilgang til:
-
-```dotenv
-LLM_PROVIDER=openai
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=modellnavn-fra-kontoen
-OPENAI_API_KEY=din-private-nokkel
-NBIM_MAX_OUTPUT_TOKENS=4000
-NBIM_API_TIMEOUT=45
-```
-
-Dette sender saksgrunnlag og policyutvalg til OpenAI når du eksplisitt starter
-probe eller LLM-batch. API-nøkkelen skal ikke sendes i chat eller legges i Git.
-Se [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+[Hele workflowen i Mermaid](WORKFLOW.md) · [Drift og feil](OPERATIONS.md)

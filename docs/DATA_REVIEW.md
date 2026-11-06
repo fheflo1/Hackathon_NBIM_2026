@@ -133,10 +133,10 @@ Forslagsteksten «Elect Director X» viser hva som skal avgjøres, men dokumente
 
 Policy må komme fra en eksplisitt, versjonert NBIM-kilde med referanse og gyldighetsdato. Retningslinjer som publiseres etter møtedato skal ikke brukes som om de var kjent den gangen. Ved historisk evaluering må både selskapsopplysninger og policy ha vært tilgjengelige før avstemningen.
 
-Den medfølgende policy-pakken er en begrenset demonstrasjonsdelmengde, med et konservativt tillatt datointervall fra 2025-02-17 til og med 2025-12-31. Den dekker ikke hele NBIMs regelverk eller alle historiske versjoner. Saker utenfor dette tidsintervallet eller uten en dekkende regel må markeres for manuell vurdering. Pakken gir derfor ikke grunnlag for å kalle alle historiske saker ferdigbehandlet eller for å evaluere full regelverksetterlevelse for 2019–2026.
+Den medfølgende policy-pakken er en begrenset kuratert delmengde, med et konservativt tillatt datointervall fra 2025-02-17 til og med 2025-12-31. Den dekker ikke hele NBIMs regelverk eller alle historiske versjoner. Saker utenfor dette tidsintervallet eller uten en dekkende regel må markeres for manuell vurdering. Pakken gir derfor ikke grunnlag for å kalle alle historiske saker ferdigbehandlet eller for å evaluere full regelverksetterlevelse for 2019–2026.
 
 En uavhengig kontrollagent kan kontrollere kildehenvisning, konsistens og om begrunnelsen har støtte i tilgjengelig evidens. Den kan ikke gjøre manglende fakta sanne. Etter maksimalt antall forsøk skal et teknisk fallback AVSTÅ merkes som fallback og `needs_human_review`, slik at det kan skilles fra en policybegrunnet avståelse.
 
-## Syntetiske demonstrasjonssaker
+## Testdata holdes utenfor produktet
 
-`data/demo_agenda.csv` er kunstige saker med selskapsnavn som starter med `DEMO`. De har ingen historisk fasit og skal ikke inngå i modelltrening eller holdes frem som reelle selskapsvurderinger. Filen inneholder tre tydelige forslagstyper og én eksplisitt angrepstekst for å prøve gjennom dataflyten og kontrollmekanismene.
+Demodata er fjernet fra `data/` og fra appens datavalg. Syntetiske saker brukes kun i automatiske tester under `tests/fixtures/`. De inngår ikke i modelltrening eller i datavisningens antall.

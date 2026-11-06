@@ -32,6 +32,15 @@ def parser_for_cli():
     backup.add_argument("--out", type=Path, required=True)
     activate = commands.add_parser("activate-model")
     activate.add_argument("run_id")
+    triage = commands.add_parser(
+        "triage-train", help="Tren triagemodellen (LR) fra data/real_votes.csv"
+    )
+    triage.add_argument("--last-train-year", type=int, default=2023)
+    triage.add_argument("--out", type=Path)
+    commands.add_parser(
+        "triage-holdout",
+        help="Evaluer den frosne triagemodellen én gang på det låste testsettet 2025-2026",
+    )
     for name in ("prepare", "train", "process", "evaluate"):
         command = commands.add_parser(name)
         command.add_argument("--source", choices=("real", "npx", "upload"), default="real")
@@ -44,9 +53,7 @@ def parser_for_cli():
             command.add_argument("--target-recall", type=float, default=0.8)
         if name in ("process", "evaluate"):
             command.add_argument("--db", type=Path)
-            command.add_argument(
-                "--mode", choices=("demo", "llm"), default="demo" if name == "process" else "llm"
-            )
+            command.add_argument("--mode", choices=("demo", "llm"), default="llm")
         if name == "process":
             command.add_argument("--limit", type=int, default=5)
             command.add_argument("--max-attempts", type=int)
@@ -56,9 +63,6 @@ def parser_for_cli():
             command.add_argument("--reviewer-model")
             command.add_argument("--priority-model", type=Path)
             command.add_argument("--year", type=int)
-    demo = commands.add_parser("demo")
-    demo.add_argument("--skip-training", action="store_true")
-    commands.add_parser("attack-test")
     return parser
 
 
@@ -74,7 +78,7 @@ def main(argv=None):
             if result["created"] and args.model:
                 path = Path(result["path"])
                 path.write_text(
-                    path.read_text().replace("LLM_MODEL=qwen2.5:7b", f"LLM_MODEL={args.model}")
+                    path.read_text().replace("LLM_MODEL=qwen3:8b", f"LLM_MODEL={args.model}")
                 )
             emit(result)
         elif args.command == "doctor":
@@ -103,6 +107,37 @@ def main(argv=None):
             from .diagrams import WORKFLOW_MERMAID
 
             print(WORKFLOW_MERMAID)
+        elif args.command == "triage-train":
+            from .triage import train
+
+            out = settings.path(args.out) if args.out else settings.triage_model_path
+            emit(
+                train(settings.root / "data/real_votes.csv", out, args.last_train_year)
+                | {"path": str(out)}
+            )
+        elif args.command == "triage-holdout":
+            import joblib
+
+            from .triage import holdout, train
+
+            csv = settings.root / "data/real_votes.csv"
+            frozen_path = settings.triage_model_path
+            if not frozen_path.exists():
+                train(csv, frozen_path, 2023)
+            frozen = joblib.load(frozen_path)  # trained 2019-2023, thresholds chosen on 2023
+            retrained_path = frozen_path.with_name("triage_model_2024.joblib")
+            train(csv, retrained_path, 2024)  # declared variant: same recipe, 2019-2024
+            report = {
+                "frozen": holdout(csv, frozen),
+                "retrained_2024": holdout(csv, joblib.load(retrained_path)),
+                "protocol": "Frozen model as validated on 2024; one scoring of 2025-2026; "
+                "no refit or threshold change after scoring.",
+            }
+            out = frozen_path.with_name("holdout_report.json")
+            out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            emit(
+                {k: v["all"] for k, v in report.items() if isinstance(v, dict)} | {"path": str(out)}
+            )
         elif args.command == "activate-model":
             from .registry import activate_run
 
@@ -118,13 +153,6 @@ def main(argv=None):
                 with closing(sqlite3.connect(out)) as dst:
                     src.backup(dst)
             emit({"backup": str(out), "source": str(source)})
-        elif args.command in ("demo", "attack-test"):
-            from .demo import run_demo
-
-            run_demo(
-                skip_training=args.command == "attack-test" or args.skip_training,
-                attack_only=args.command == "attack-test",
-            )
         else:
             if args.source == "upload" and args.input is None:
                 raise ValueError("--source upload krever --input sti/til/agenda.csv")
