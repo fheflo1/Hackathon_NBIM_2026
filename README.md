@@ -65,6 +65,52 @@ den avgjør ikke stemmene og filtrerer ikke bort opplastede saker.
 [Modellresultatene](docs/MODEL_RESULTS.md) gjelder historisk MOT-prediksjon,
 ikke kvaliteten til LLM-agentene eller DeBERTa-målet `against_board`.
 
+## Triagemodell foran agentflyten
+
+Hver saksliste rangeres først av en logistisk regresjon trent på NBIMs egne stemmer
+(`src/nbim_flow/triage.py`). Målet er stemme mot styrets anbefaling (`against_board`).
+Personnavn og årstall maskeres, og historikk bruker bare møter før møtedatoen.
+
+- Flaggede saker, saker en kuratert policyregel dekker og tekst som ligner et
+  instruksjonsangrep går til full agentvurdering, én om gangen.
+- Øvrige saker får en lett agentkontroll i parallell (`NBIM_LIGHT_WORKERS`, standard 2).
+  Tvil, ugyldig svar eller konfidens under `NBIM_MIN_CONFIDENCE` eskalerer til full vurdering.
+- Siden **Modellen** viser validering, testresultat og en terskel-slider.
+
+Tidsdelt evaluering: trent 2019–2023, terskler valgt på 2023, validert på 2024, og
+testsettet 2025–2026 holdt låst til modellen var frosset og deretter scoret én gang:
+
+| 2025–2026 (3 448 saker, 169 mot-stemmer) | Average precision | Presisjon | Recall | Topp 15 % |
+| --- | --- | --- | --- | --- |
+| Tilfeldig rangering | 0,05 | – | – | 15 % |
+| Sakstypens mot-andel | 0,16 | – | – | – |
+| Triagemodell, frosset (trent til 2023) | 0,46 | 56 % | 41 % | 64 % |
+| Triagemodell, trent på nytt til 2024 | 0,51 | 50 % | 46 % | 68 % |
+
+«Alltid følg styret» gir 95 % accuracy og 0 % recall. Tallene reproduseres med:
+
+```bash
+python3 run.py --cli triage-train     # trener og validerer på 2024 (ca. 10 s)
+python3 run.py --cli triage-holdout   # scorer det låste testsettet 2025–2026
+```
+
+`run.py --setup` trener triagemodellen automatisk når den mangler. Demosakslister ligger i
+`data/demo/` (to ekte møter fra 2024 og ett fiktivt fra 2025).
+
+## Kilder og AI-bruk
+
+- [NBIM Voting](https://www.nbim.no/en/responsible-investment/voting/) og
+  [NBIMs stemmehistorikk](https://www.nbim.no/en/responsible-investment/voting/our-voting-records/):
+  grunnlaget for `data/real_votes.csv`, levert av teamet.
+- [NBIM Global voting guidelines 2025](https://www.nbim.no/contentassets/01a7ee19b5d84a73a67a365e76a0fb01/global-voting-guildeines_2025.pdf):
+  grunnlaget for de kuraterte policyreglene.
+- [SEC Form N-PX](https://www.sec.gov/forms/formn-px.pdf): separat kilde, ikke brukt som NBIM-fasit.
+- AI-verktøy: Codex ble brukt til datagjennomgang, arkitektur, kode, dokumentasjon og tester
+  (fra appens første README). Claude Code ble brukt til modellarbeid, triagemodellen,
+  integrasjonen i appen, testene for den og dokumentasjonen av resultatene. Eksperimentene
+  med DeBERTa og LLM-varianter ble kjørt i et eget arbeidsområde og er ikke en del av dette
+  repoet; tallene over reproduseres av kommandoene i repoet.
+
 ## Utvikling og kontroll
 
 ```bash
