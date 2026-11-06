@@ -206,6 +206,7 @@ interface HumanVote {
   note: string;
   decided_at: string;
   agent_vote?: string;
+  agent_needs_human_review?: boolean;
 }
 
 interface DecisionTarget {
@@ -247,7 +248,7 @@ function HumanDecision({ item, target }: { item: Item; target: DecisionTarget })
       {human ? (
         <p>
           Du valgte <strong>{VOTE_LABEL[human.vote] || human.vote}</strong>. Agentens forslag var{' '}
-          {r.needs_human_review || human.agent_vote === undefined
+          {human.agent_needs_human_review || human.agent_vote === undefined
             ? 'manuell vurdering'
             : VOTE_LABEL[human.agent_vote] || human.agent_vote}
           {human.note ? ` · «${human.note}»` : ''}. Du kan endre valget.
